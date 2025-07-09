@@ -43,3 +43,21 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Ignorar archivos de configuración de servicios de Google
+android/app/google-services.json
+
+# Dependencias
+node_modules/
+
+# Archivos de logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archivos de configuración del editor
+.idea
+.vscode
+
+# Archivos de registro
+macos/Flutter/GeneratedPluginRegistrant.swift

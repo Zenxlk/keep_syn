@@ -1,33 +1,41 @@
 import 'package:flutter/material.dart';
-
-// Importación de los paquetes de firebase
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // Importa Riverpod
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:keepsyn_app/src/features/auth/presentation/screens/auth_wrapper.dart';
 import 'firebase_options.dart';
 
-Future<void> main() async {
-  // Veirfica el estado de Flutter
-  WidgetsFlutterBinding.ensureInitialized();
+// Clave interna
+const serverClientId = String.fromEnvironment('SERVER_CLIENT_ID');
 
-  // Inicializa Firebase usando las opciones de la plataforma actual
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  runApp(const MyApp());
+  // Validación si la clave está presente
+  if (serverClientId.isEmpty) {
+    throw Exception(
+      'ERROR: La variable SERVER_CLIENT_ID no fue proporcionada.',
+    );
+  }
+
+  // Usa la instancia singleton para inicializar
+  await GoogleSignIn.instance.initialize(serverClientId: serverClientId);
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'KeepSyn',
-      home: Scaffold(
-        appBar: AppBar(title: const Text('KeepSyn')),
-        body: const Center(
-          child: Text('Proyecto inicializado y conectado a Firebase! ✅'),
-        ),
+      theme: ThemeData(
+        primarySwatch: Colors.deepPurple,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
+      home: const AuthWrapper(),
     );
   }
 }
