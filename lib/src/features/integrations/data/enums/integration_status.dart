@@ -1,0 +1,1 @@
+enum IntegrationStatus { notConnected, linking, connected, expired, error }
