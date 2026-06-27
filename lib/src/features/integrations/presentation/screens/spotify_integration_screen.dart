@@ -12,7 +12,7 @@ class SpotifyIntegrationScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final statusAsync = ref.watch(spotifyStatusProvider);
     final notifier = ref.read(spotifyStatusProvider.notifier);
-    final status = statusAsync.valueOrNull;
+    final status = statusAsync.value;
     final isConnected = status == IntegrationStatus.connected;
     final isLinking = status == IntegrationStatus.linking;
 

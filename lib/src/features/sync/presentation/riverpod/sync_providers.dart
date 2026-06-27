@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -86,6 +85,7 @@ class SyncController extends _$SyncController {
       sessionActiveJobId: job.jobId,
       sessionSyncInProgress: true,
       progress: 0,
+      clearProgressMessage: true,
       clearResult: true,
       clearFailure: true,
     );
@@ -98,10 +98,9 @@ class SyncController extends _$SyncController {
 
     state = state.copyWith(status: SyncStatus.running);
 
-    final result = await ref.read(syncRepositoryProvider).startSync(
-      job: job,
-      sourcePlaylist: sourcePlaylist,
-    );
+    final result = await ref
+        .read(syncRepositoryProvider)
+        .startSync(job: job, sourcePlaylist: sourcePlaylist);
 
     await result.fold(
       (failure) async {
@@ -117,6 +116,8 @@ class SyncController extends _$SyncController {
           lastSyncStatus: SyncStatus.failed,
           lastSyncAt: now,
           recentErrors: failureErrors,
+          progressMessage:
+              failure.message ?? 'Fallo durante la sincronizacion.',
         );
 
         await _persistSnapshot(
@@ -128,6 +129,9 @@ class SyncController extends _$SyncController {
       (syncResult) async {
         final mappedStatus = _mapResultStatus(syncResult.status);
         final now = syncResult.completedAt;
+        final quotaExceeded = syncResult.errors.any(
+          (error) => error.code == 'TARGET_QUOTA_EXCEEDED',
+        );
 
         state = state.copyWith(
           status: mappedStatus,
@@ -139,6 +143,12 @@ class SyncController extends _$SyncController {
           lastSyncStatus: mappedStatus,
           lastSyncAt: now,
           recentErrors: syncResult.errors,
+          progressMessage:
+              quotaExceeded
+                  ? 'Cuota de YouTube alcanzada. Se detuvo el job para evitar mas consumo.'
+                  : syncResult.hasFailures
+                  ? 'Sincronizacion finalizada con algunos errores.'
+                  : 'Sincronizacion completada correctamente.',
         );
 
         await _persistSnapshot(
@@ -173,6 +183,8 @@ class SyncController extends _$SyncController {
           lastSyncStatus: SyncStatus.failed,
           lastSyncAt: now,
           recentErrors: failureErrors,
+          progressMessage:
+              failure.message ?? 'No se pudo cancelar la sincronizacion.',
         );
 
         await _persistSnapshot(
@@ -191,6 +203,7 @@ class SyncController extends _$SyncController {
           clearFailure: true,
           lastSyncStatus: SyncStatus.cancelled,
           lastSyncAt: now,
+          progressMessage: 'Sincronizacion cancelada por el usuario.',
         );
 
         await _persistSnapshot(
@@ -209,6 +222,7 @@ class SyncController extends _$SyncController {
       sessionActiveJobId: null,
       sessionSyncInProgress: false,
       progress: 0,
+      clearProgressMessage: true,
       clearFailure: true,
       clearResult: true,
     );
@@ -218,6 +232,7 @@ class SyncController extends _$SyncController {
     state = state.copyWith(
       status: SyncStatus.running,
       progress: progress.value,
+      progressMessage: progress.message,
       clearFailure: true,
     );
   }
