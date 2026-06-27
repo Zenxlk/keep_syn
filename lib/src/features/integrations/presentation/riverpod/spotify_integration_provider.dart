@@ -1,10 +1,10 @@
-import 'package:dio/dio.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:keepsyn_app/src/core/constants/env_constants.dart';
 import 'package:keepsyn_app/src/core/error/exceptions.dart';
 import 'package:keepsyn_app/src/core/logger/firebase_error_logger.dart';
+import 'package:keepsyn_app/src/core/network/api_dio_provider.dart';
 import 'package:keepsyn_app/src/features/auth/presentation/riverpod/auth_providers.dart';
 import 'package:keepsyn_app/src/features/integrations/data/datasources/spotify_remote_data_source.dart';
 import 'package:keepsyn_app/src/features/integrations/data/enums/integration_status.dart';
@@ -14,33 +14,8 @@ import 'package:keepsyn_app/src/features/integrations/data/models/spotify_track_
 const _spotifyScope =
     'playlist-read-private playlist-read-collaborative user-read-email';
 
-final spotifyDioProvider = Provider<Dio>((ref) {
-  final dio = Dio(
-    BaseOptions(
-      baseUrl: EnvConstants.syncApiBaseUrl,
-      connectTimeout: const Duration(seconds: 12),
-      receiveTimeout: const Duration(seconds: 15),
-    ),
-  );
-
-  dio.interceptors.add(
-    InterceptorsWrapper(
-      onRequest: (options, handler) async {
-        final user = FirebaseAuth.instance.currentUser;
-        final token = await user?.getIdToken();
-        if (token != null && token.isNotEmpty) {
-          options.headers['Authorization'] = 'Bearer $token';
-        }
-        handler.next(options);
-      },
-    ),
-  );
-
-  return dio;
-});
-
 final spotifyDataSourceProvider = Provider<SpotifyRemoteDataSource>((ref) {
-  return SpotifyRemoteDataSource(ref.watch(spotifyDioProvider));
+  return SpotifyRemoteDataSource(ref.watch(apiDioProvider));
 });
 
 final spotifyPlaylistsProvider = FutureProvider<List<SpotifyPlaylistModel>>((

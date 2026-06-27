@@ -1,11 +1,11 @@
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:keepsyn_app/src/core/constants/env_constants.dart';
 import 'package:keepsyn_app/src/core/error/failures.dart';
+import 'package:keepsyn_app/src/features/auth/presentation/riverpod/auth_providers.dart';
 import 'package:keepsyn_app/src/features/sync/data/local/shared_preferences_sync_local_store.dart';
 import 'package:keepsyn_app/src/features/sync/data/local/sync_local_store.dart';
 import 'package:keepsyn_app/src/features/sync/data/repositories/sync_repository_impl.dart';
@@ -35,11 +35,11 @@ Future<ISyncLocalStore> syncLocalStore(Ref ref) async {
 @Riverpod(keepAlive: true)
 ISyncService syncService(Ref ref) {
   if (EnvConstants.useRealSyncApi) {
+    final firebaseAuth = ref.watch(firebaseAuthProvider);
     return HttpSyncService(
       baseUrl: EnvConstants.syncApiBaseUrl,
       idTokenProvider: ({bool forceRefresh = false}) async {
-        final currentUser = FirebaseAuth.instance.currentUser;
-        return currentUser?.getIdToken(forceRefresh);
+        return firebaseAuth.currentUser?.getIdToken(forceRefresh);
       },
     );
   }
