@@ -50,6 +50,20 @@ google-services.json
 ios/Runner/GoogleService-Info.plist
 android/app/GoogleService-Info.plist
 
+# Firebase — generado por FlutterFire CLI, contiene API keys por plataforma
+# Regenerar con: flutterfire configure
+lib/firebase_options.dart
+
+# Android signing — nunca versionar credenciales de firma
+android/app/*.keystore
+android/app/*.jks
+android/key.properties
+
+# iOS/macOS distribution
+*.mobileprovision
+*.p12
+*.cer
+
 # Dependencias
 node_modules/
 
