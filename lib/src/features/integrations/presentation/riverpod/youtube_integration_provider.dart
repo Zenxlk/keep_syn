@@ -1,10 +1,9 @@
-import 'package:dio/dio.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:keepsyn_app/src/core/constants/env_constants.dart';
 import 'package:keepsyn_app/src/core/error/exceptions.dart';
 import 'package:keepsyn_app/src/core/logger/firebase_error_logger.dart';
+import 'package:keepsyn_app/src/core/network/api_dio_provider.dart';
 import 'package:keepsyn_app/src/features/auth/presentation/riverpod/auth_providers.dart';
 import 'package:keepsyn_app/src/features/integrations/data/datasources/youtube_remote_data_source.dart';
 import 'package:keepsyn_app/src/features/integrations/data/enums/integration_status.dart';
@@ -14,32 +13,8 @@ const _youtubeScopes = <String>[
   'https://www.googleapis.com/auth/youtube.readonly',
 ];
 
-final youtubeDioProvider = Provider<Dio>((ref) {
-  final dio = Dio(
-    BaseOptions(
-      baseUrl: EnvConstants.syncApiBaseUrl,
-      connectTimeout: const Duration(seconds: 12),
-      receiveTimeout: const Duration(seconds: 15),
-    ),
-  );
-
-  dio.interceptors.add(
-    InterceptorsWrapper(
-      onRequest: (options, handler) async {
-        final token = await FirebaseAuth.instance.currentUser?.getIdToken();
-        if (token != null && token.isNotEmpty) {
-          options.headers['Authorization'] = 'Bearer $token';
-        }
-        handler.next(options);
-      },
-    ),
-  );
-
-  return dio;
-});
-
 final youtubeDataSourceProvider = Provider<YouTubeRemoteDataSource>((ref) {
-  return YouTubeRemoteDataSource(ref.watch(youtubeDioProvider));
+  return YouTubeRemoteDataSource(ref.watch(apiDioProvider));
 });
 
 final youtubeStatusProvider =
