@@ -12,7 +12,7 @@ class YouTubeIntegrationScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final statusAsync = ref.watch(youtubeStatusProvider);
     final notifier = ref.read(youtubeStatusProvider.notifier);
-    final status = statusAsync.valueOrNull;
+    final status = statusAsync.value;
     final isConnected = status == IntegrationStatus.connected;
     final isLinking = status == IntegrationStatus.linking;
 

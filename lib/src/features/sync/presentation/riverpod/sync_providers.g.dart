@@ -6,92 +6,220 @@ part of 'sync_providers.dart';
 // RiverpodGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, type=warning
+
+@ProviderFor(sharedPreferences)
+final sharedPreferencesProvider = SharedPreferencesProvider._();
+
+final class SharedPreferencesProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<SharedPreferences>,
+          SharedPreferences,
+          FutureOr<SharedPreferences>
+        >
+    with
+        $FutureModifier<SharedPreferences>,
+        $FutureProvider<SharedPreferences> {
+  SharedPreferencesProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'sharedPreferencesProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$sharedPreferencesHash();
+
+  @$internal
+  @override
+  $FutureProviderElement<SharedPreferences> $createElement(
+    $ProviderPointer pointer,
+  ) => $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<SharedPreferences> create(Ref ref) {
+    return sharedPreferences(ref);
+  }
+}
+
 String _$sharedPreferencesHash() => r'48e60558ea6530114ea20ea03e69b9fb339ab129';
 
-/// See also [sharedPreferences].
-@ProviderFor(sharedPreferences)
-final sharedPreferencesProvider = FutureProvider<SharedPreferences>.internal(
-  sharedPreferences,
-  name: r'sharedPreferencesProvider',
-  debugGetCreateSourceHash:
-      const bool.fromEnvironment('dart.vm.product')
-          ? null
-          : _$sharedPreferencesHash,
-  dependencies: null,
-  allTransitiveDependencies: null,
-);
+@ProviderFor(syncLocalStore)
+final syncLocalStoreProvider = SyncLocalStoreProvider._();
 
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-typedef SharedPreferencesRef = FutureProviderRef<SharedPreferences>;
+final class SyncLocalStoreProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<ISyncLocalStore>,
+          ISyncLocalStore,
+          FutureOr<ISyncLocalStore>
+        >
+    with $FutureModifier<ISyncLocalStore>, $FutureProvider<ISyncLocalStore> {
+  SyncLocalStoreProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'syncLocalStoreProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$syncLocalStoreHash();
+
+  @$internal
+  @override
+  $FutureProviderElement<ISyncLocalStore> $createElement(
+    $ProviderPointer pointer,
+  ) => $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<ISyncLocalStore> create(Ref ref) {
+    return syncLocalStore(ref);
+  }
+}
+
 String _$syncLocalStoreHash() => r'346a26a4a4e05308d0693c4bf51118419fe7c8db';
 
-/// See also [syncLocalStore].
-@ProviderFor(syncLocalStore)
-final syncLocalStoreProvider = FutureProvider<ISyncLocalStore>.internal(
-  syncLocalStore,
-  name: r'syncLocalStoreProvider',
-  debugGetCreateSourceHash:
-      const bool.fromEnvironment('dart.vm.product')
-          ? null
-          : _$syncLocalStoreHash,
-  dependencies: null,
-  allTransitiveDependencies: null,
-);
-
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-typedef SyncLocalStoreRef = FutureProviderRef<ISyncLocalStore>;
-String _$syncServiceHash() => r'030e68d6ef74b170e5063daece42816869571f68';
-
-/// See also [syncService].
 @ProviderFor(syncService)
-final syncServiceProvider = Provider<ISyncService>.internal(
-  syncService,
-  name: r'syncServiceProvider',
-  debugGetCreateSourceHash:
-      const bool.fromEnvironment('dart.vm.product') ? null : _$syncServiceHash,
-  dependencies: null,
-  allTransitiveDependencies: null,
-);
+final syncServiceProvider = SyncServiceProvider._();
 
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-typedef SyncServiceRef = ProviderRef<ISyncService>;
+final class SyncServiceProvider
+    extends $FunctionalProvider<ISyncService, ISyncService, ISyncService>
+    with $Provider<ISyncService> {
+  SyncServiceProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'syncServiceProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$syncServiceHash();
+
+  @$internal
+  @override
+  $ProviderElement<ISyncService> $createElement($ProviderPointer pointer) =>
+      $ProviderElement(pointer);
+
+  @override
+  ISyncService create(Ref ref) {
+    return syncService(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(ISyncService value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<ISyncService>(value),
+    );
+  }
+}
+
+String _$syncServiceHash() => r'00f69995fcc352ebcce2a16479a7deaeb49bc959';
+
+@ProviderFor(syncRepository)
+final syncRepositoryProvider = SyncRepositoryProvider._();
+
+final class SyncRepositoryProvider
+    extends
+        $FunctionalProvider<ISyncRepository, ISyncRepository, ISyncRepository>
+    with $Provider<ISyncRepository> {
+  SyncRepositoryProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'syncRepositoryProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$syncRepositoryHash();
+
+  @$internal
+  @override
+  $ProviderElement<ISyncRepository> $createElement($ProviderPointer pointer) =>
+      $ProviderElement(pointer);
+
+  @override
+  ISyncRepository create(Ref ref) {
+    return syncRepository(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(ISyncRepository value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<ISyncRepository>(value),
+    );
+  }
+}
+
 String _$syncRepositoryHash() => r'63019b08f6130d160c31a0c5a0dc0b69316e1096';
 
-/// See also [syncRepository].
-@ProviderFor(syncRepository)
-final syncRepositoryProvider = Provider<ISyncRepository>.internal(
-  syncRepository,
-  name: r'syncRepositoryProvider',
-  debugGetCreateSourceHash:
-      const bool.fromEnvironment('dart.vm.product')
-          ? null
-          : _$syncRepositoryHash,
-  dependencies: null,
-  allTransitiveDependencies: null,
-);
-
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-typedef SyncRepositoryRef = ProviderRef<ISyncRepository>;
-String _$syncControllerHash() => r'bed3542062a5035412ea6a7c80ee5847cb9fd953';
-
-/// See also [SyncController].
 @ProviderFor(SyncController)
-final syncControllerProvider =
-    NotifierProvider<SyncController, SyncControllerState>.internal(
-      SyncController.new,
-      name: r'syncControllerProvider',
-      debugGetCreateSourceHash:
-          const bool.fromEnvironment('dart.vm.product')
-              ? null
-              : _$syncControllerHash,
-      dependencies: null,
-      allTransitiveDependencies: null,
-    );
+final syncControllerProvider = SyncControllerProvider._();
 
-typedef _$SyncController = Notifier<SyncControllerState>;
-// ignore_for_file: type=lint
-// ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package
+final class SyncControllerProvider
+    extends $NotifierProvider<SyncController, SyncControllerState> {
+  SyncControllerProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'syncControllerProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$syncControllerHash();
+
+  @$internal
+  @override
+  SyncController create() => SyncController();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(SyncControllerState value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<SyncControllerState>(value),
+    );
+  }
+}
+
+String _$syncControllerHash() => r'f3ace3a3b4f58cc81f8c626ba84ba6de6de21056';
+
+abstract class _$SyncController extends $Notifier<SyncControllerState> {
+  SyncControllerState build();
+  @$mustCallSuper
+  @override
+  WhenComplete runBuild() {
+    final ref = this.ref as $Ref<SyncControllerState, SyncControllerState>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<SyncControllerState, SyncControllerState>,
+              SyncControllerState,
+              Object?,
+              Object?
+            >;
+    return element.handleCreate(ref, build);
+  }
+}
