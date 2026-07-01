@@ -20,6 +20,7 @@ class SyncControllerState extends Equatable {
   final SyncResult? result;
   final Failure? failure;
   final double progress;
+  final String? progressMessage;
   final SyncStatus? lastSyncStatus;
   final DateTime? lastSyncAt;
   final List<SyncTrackError> recentErrors;
@@ -32,6 +33,7 @@ class SyncControllerState extends Equatable {
     this.result,
     this.failure,
     this.progress = 0,
+    this.progressMessage,
     this.lastSyncStatus,
     this.lastSyncAt,
     this.recentErrors = const <SyncTrackError>[],
@@ -59,6 +61,8 @@ class SyncControllerState extends Equatable {
     bool clearFailure = false,
     bool clearResult = false,
     double? progress,
+    String? progressMessage,
+    bool clearProgressMessage = false,
     SyncStatus? lastSyncStatus,
     DateTime? lastSyncAt,
     List<SyncTrackError>? recentErrors,
@@ -72,6 +76,8 @@ class SyncControllerState extends Equatable {
       result: clearResult ? null : (result ?? this.result),
       failure: clearFailure ? null : (failure ?? this.failure),
       progress: progress ?? this.progress,
+      progressMessage:
+          clearProgressMessage ? null : (progressMessage ?? this.progressMessage),
       lastSyncStatus: lastSyncStatus ?? this.lastSyncStatus,
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
       recentErrors: recentErrors ?? this.recentErrors,
@@ -87,6 +93,7 @@ class SyncControllerState extends Equatable {
         result,
         failure,
         progress,
+        progressMessage,
         lastSyncStatus,
         lastSyncAt,
         recentErrors,

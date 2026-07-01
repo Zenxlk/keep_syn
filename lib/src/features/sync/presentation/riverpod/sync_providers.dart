@@ -5,11 +5,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:keepsyn_app/src/core/constants/env_constants.dart';
 import 'package:keepsyn_app/src/core/error/failures.dart';
-import 'package:keepsyn_app/src/features/auth/presentation/riverpod/auth_providers.dart';
 import 'package:keepsyn_app/src/features/sync/data/local/shared_preferences_sync_local_store.dart';
 import 'package:keepsyn_app/src/features/sync/data/local/sync_local_store.dart';
 import 'package:keepsyn_app/src/features/sync/data/repositories/sync_repository_impl.dart';
-import 'package:keepsyn_app/src/features/sync/data/services/http_sync_service.dart';
+import 'package:keepsyn_app/src/core/network/api_dio_provider.dart';
+import 'package:keepsyn_app/src/features/sync/data/services/firestore_sync_service.dart';
 import 'package:keepsyn_app/src/features/sync/data/services/mock_sync_service.dart';
 import 'package:keepsyn_app/src/features/sync/data/services/sync_service.dart';
 import 'package:keepsyn_app/src/features/sync/domain/entities/playlist.dart';
@@ -35,13 +35,8 @@ Future<ISyncLocalStore> syncLocalStore(Ref ref) async {
 @Riverpod(keepAlive: true)
 ISyncService syncService(Ref ref) {
   if (EnvConstants.useRealSyncApi) {
-    final firebaseAuth = ref.watch(firebaseAuthProvider);
-    return HttpSyncService(
-      baseUrl: EnvConstants.syncApiBaseUrl,
-      idTokenProvider: ({bool forceRefresh = false}) async {
-        return firebaseAuth.currentUser?.getIdToken(forceRefresh);
-      },
-    );
+    final dio = ref.watch(apiDioProvider);
+    return FirestoreSyncService(dio: dio);
   }
 
   return MockSyncService();

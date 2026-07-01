@@ -29,15 +29,26 @@ class SyncScreen extends ConsumerWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 12),
-                  LinearProgressIndicator(value: state.progress),
+                  if (state.isRunning || state.isPreparing)
+                    const LinearProgressIndicator()
+                  else
+                    LinearProgressIndicator(value: state.progress),
                   const SizedBox(height: 8),
                   Text('${(state.progress * 100).toStringAsFixed(0)}%'),
+                  const SizedBox(height: 8),
+                  Text(
+                    state.progressMessage ??
+                        (state.isRunning || state.isPreparing
+                            ? 'Esperando actualizacion del backend...'
+                            : 'Sincronizacion inactiva.'),
+                  ),
                   if (state.activeJob != null) ...[
                     const SizedBox(height: 8),
                     Text('Job: ${state.activeJob!.jobId}'),
                     Text(
                       'Origen: ${state.activeJob!.sourcePlatform} · Destino: ${state.activeJob!.targetPlatform}',
                     ),
+                    Text('Playlist origen: ${state.activeJob!.sourcePlaylistId}'),
                   ],
                 ],
               ),
@@ -64,6 +75,33 @@ class SyncScreen extends ConsumerWidget {
                 ),
               ),
             ),
+            if (state.result!.errors.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Card(
+                child: ExpansionTile(
+                  leading: Icon(
+                    Icons.warning_amber_rounded,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text('Tracks fallidos (${state.result!.errors.length})'),
+                  children: state.result!.errors.map((error) {
+                    return ListTile(
+                      dense: true,
+                      title: Text(
+                        error.message,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      subtitle: Text(
+                        '${error.code} · ${error.trackId}',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
           ],
           if (state.hasError) ...[
             const SizedBox(height: 12),
