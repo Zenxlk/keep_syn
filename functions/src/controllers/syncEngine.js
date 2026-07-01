@@ -27,6 +27,15 @@ const DEFAULT_FUNCTION_REGION = "us-central1";
 const TASK_DISPATCH_DEADLINE_SECONDS = 540;
 const MAX_RATE_LIMIT_RETRIES = 5;
 const BASE_BACKOFF_MS = 750;
+const DEFAULT_DAILY_ESTIMATED_QUOTA_BUDGET = 3000;
+const DEFAULT_MIN_QUOTA_BUFFER = 100;
+const YOUTUBE_QUOTA_COSTS = {
+  listPlaylists: 1,
+  listPlaylistTracks: 1,
+  searchTracks: 0,       // ytmusic-api no consume quota de la Data API
+  addTrackToPlaylist: 50,
+  createPlaylist: 50,
+};
 
 let syncPlatformRegistryOverride = null;
 
@@ -277,6 +286,149 @@ function extractProviderReason(providerError) {
 
   const reason = errors[0].reason;
   return typeof reason === "string" ? reason : null;
+}
+
+/**
+ * @param {number|null} providerStatus
+ * @param {string|null} providerReason
+ * @return {boolean}
+ */
+function isQuotaExceededError(providerStatus, providerReason) {
+  if (providerStatus !== 403) {
+    return false;
+  }
+
+  const normalizedReason = typeof providerReason === "string" ?
+    providerReason.toLowerCase() : "";
+
+  return [
+    "quotaexceeded",
+    "dailylimitexceeded",
+    "userratelimitexceeded",
+    "ratelimitexceeded",
+  ].includes(normalizedReason);
+}
+
+/**
+ * @param {Date=} now
+ * @return {string}
+ */
+function getQuotaDayKey(now = new Date()) {
+  return now.toISOString().slice(0, 10);
+}
+
+/**
+ * @return {Object}
+ */
+function getQuotaGuardConfig() {
+  const configuredBudget = Number.parseInt(
+      process.env.SYNC_YOUTUBE_DAILY_QUOTA_BUDGET ||
+      `${DEFAULT_DAILY_ESTIMATED_QUOTA_BUDGET}`,
+      10,
+  );
+  const configuredBuffer = Number.parseInt(
+      process.env.SYNC_YOUTUBE_MIN_QUOTA_BUFFER ||
+      `${DEFAULT_MIN_QUOTA_BUFFER}`,
+      10,
+  );
+
+  return {
+    dailyBudget: Number.isFinite(configuredBudget) ?
+      Math.max(1000, configuredBudget) : DEFAULT_DAILY_ESTIMATED_QUOTA_BUDGET,
+    minBuffer: Number.isFinite(configuredBuffer) ?
+      Math.max(0, configuredBuffer) : DEFAULT_MIN_QUOTA_BUFFER,
+  };
+}
+
+/**
+ * @param {string} message
+ * @param {Object=} metadata
+ * @return {Error}
+ */
+function createQuotaGuardError(message, metadata = {}) {
+  const error = new Error(message);
+  error.code = "TARGET_QUOTA_GUARD";
+  error.providerReason = "quota_guard";
+  error.metadata = metadata;
+  return error;
+}
+
+/**
+ * @param {Error} error
+ * @param {number|null} providerStatus
+ * @param {string|null} providerReason
+ * @return {boolean}
+ */
+function isQuotaAbortError(error, providerStatus, providerReason) {
+  return Boolean(
+      error && error.code === "TARGET_QUOTA_GUARD",
+  ) || isQuotaExceededError(providerStatus, providerReason);
+}
+
+/**
+ * @param {Object} params
+ * @return {Promise<Object>}
+ */
+async function consumeEstimatedYouTubeQuota({uid, jobId, units, operation}) {
+  if (!units || units <= 0) {
+    return {
+      dayKey: getQuotaDayKey(),
+      consumed: 0,
+      remaining: getQuotaGuardConfig().dailyBudget,
+      budget: getQuotaGuardConfig().dailyBudget,
+      minBuffer: getQuotaGuardConfig().minBuffer,
+    };
+  }
+
+  const config = getQuotaGuardConfig();
+  const dayKey = getQuotaDayKey();
+  const quotaDocId = `${uid}_${dayKey}`;
+  const quotaRef = db.collection("sync_quota_controls").doc(quotaDocId);
+
+  const txResult = await db.runTransaction(async (tx) => {
+    const snapshot = await tx.get(quotaRef);
+    const data = snapshot.exists ? snapshot.data() : {};
+    const currentEstimated = typeof data.estimatedUsed === "number" ?
+      data.estimatedUsed : 0;
+    const remainingBefore = config.dailyBudget - currentEstimated;
+    const remainingAfter = remainingBefore - units;
+
+    if (remainingAfter < config.minBuffer) {
+      throw createQuotaGuardError(
+          "Presupuesto de cuota estimada agotado para hoy.",
+          {
+            budget: config.dailyBudget,
+            minBuffer: config.minBuffer,
+            estimatedUsed: currentEstimated,
+            attemptedUnits: units,
+            remainingBefore,
+            dayKey,
+            operation,
+          },
+      );
+    }
+
+    tx.set(quotaRef, {
+      uid,
+      dayKey,
+      estimatedUsed: currentEstimated + units,
+      budget: config.dailyBudget,
+      minBuffer: config.minBuffer,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastJobId: jobId || null,
+      lastOperation: operation || null,
+    }, {merge: true});
+
+    return {
+      dayKey,
+      consumed: units,
+      remaining: remainingAfter,
+      budget: config.dailyBudget,
+      minBuffer: config.minBuffer,
+    };
+  });
+
+  return txResult;
 }
 
 /**
@@ -542,6 +694,12 @@ async function ensureTargetPlaylist(jobRef, jobData, sourceSnapshot, targetAdapt
 
   assertTargetAdapterContract(targetAdapter);
   const desiredName = getDesiredTargetPlaylistName(jobData, sourceSnapshot);
+  await consumeEstimatedYouTubeQuota({
+    uid: jobData.uid,
+    jobId: jobRef.id,
+    units: YOUTUBE_QUOTA_COSTS.listPlaylists,
+    operation: "list_target_playlists",
+  });
   const existingPlaylists = await withRateLimitRetry(() => targetAdapter.listPlaylists({
     uid: jobData.uid,
     limit: 200,
@@ -556,6 +714,15 @@ async function ensureTargetPlaylist(jobRef, jobData, sourceSnapshot, targetAdapt
     return String(playlist.name || "").trim().toLowerCase() ===
       String(desiredName).trim().toLowerCase();
   }) : null;
+
+  if (!found) {
+    await consumeEstimatedYouTubeQuota({
+      uid: jobData.uid,
+      jobId: jobRef.id,
+      units: YOUTUBE_QUOTA_COSTS.createPlaylist,
+      operation: "create_target_playlist",
+    });
+  }
 
   const playlist = found || await withRateLimitRetry(() => targetAdapter.createPlaylist({
     uid: jobData.uid,
@@ -664,10 +831,15 @@ async function applyChunkUpdate({
   errors,
   state,
   hasMore,
+  forceComputedProgress = false,
+  extraPayload = {},
 }) {
+  const nextProgress = hasMore || forceComputedProgress ?
+    computeProgress(jobData, countersDelta.processed) : 100;
+
   const updatePayload = {
     state,
-    progress: hasMore ? computeProgress(jobData, countersDelta.processed) : 100,
+    progress: nextProgress,
     cursor: {
       offset: cursor.offset,
       pageSize: cursor.pageSize,
@@ -679,6 +851,7 @@ async function applyChunkUpdate({
     "counters.updated": admin.firestore.FieldValue.increment(countersDelta.updated),
     "counters.skipped": admin.firestore.FieldValue.increment(countersDelta.skipped),
     "counters.failed": admin.firestore.FieldValue.increment(countersDelta.failed),
+    ...extraPayload,
   };
 
   if (!hasMore) {
@@ -789,6 +962,13 @@ async function processSyncJobTask({jobId, uid}) {
       platform: jobData.sourcePlatform,
     });
 
+    await consumeEstimatedYouTubeQuota({
+      uid,
+      jobId,
+      units: YOUTUBE_QUOTA_COSTS.listPlaylistTracks,
+      operation: "list_target_playlist_tracks",
+    });
+
     const existingDestinationTracks = await withRateLimitRetry(() =>
       targetAdapter.listPlaylistTracks({
         uid,
@@ -804,6 +984,7 @@ async function processSyncJobTask({jobId, uid}) {
     const reviewPending = [];
     const failedTracks = [];
     const errors = [];
+    let quotaAbortContext = null;
     const countersDelta = {
       processed: 0,
       created: 0,
@@ -835,6 +1016,13 @@ async function processSyncJobTask({jobId, uid}) {
           continue;
         }
 
+        await consumeEstimatedYouTubeQuota({
+          uid,
+          jobId,
+          units: YOUTUBE_QUOTA_COSTS.searchTracks,
+          operation: "search_target_tracks",
+        });
+
         const candidates = await withRateLimitRetry(() => targetAdapter.searchTracks({
           uid,
           track: sourceTrack,
@@ -854,6 +1042,13 @@ async function processSyncJobTask({jobId, uid}) {
             countersDelta.skipped += 1;
             continue;
           }
+
+          await consumeEstimatedYouTubeQuota({
+            uid,
+            jobId,
+            units: YOUTUBE_QUOTA_COSTS.addTrackToPlaylist,
+            operation: "add_track_to_playlist",
+          });
 
           await withRateLimitRetry(() => targetAdapter.addTrackToPlaylist({
             uid,
@@ -893,6 +1088,11 @@ async function processSyncJobTask({jobId, uid}) {
         const providerError = trackError && trackError.response ?
           trackError.response.data : null;
         const providerReason = extractProviderReason(providerError);
+        const quotaExceeded = isQuotaAbortError(
+            trackError,
+            providerStatus,
+            providerReason,
+        );
         const isAlreadyInPlaylist = providerStatus === 409 ||
           providerReason === "videoAlreadyInPlaylist";
 
@@ -906,6 +1106,10 @@ async function processSyncJobTask({jobId, uid}) {
           trackError.message : "Error inesperado procesando track.";
         const reason = providerReason ?
           `${message} (${providerReason})` : message;
+        const guardMetadata = trackError && trackError.metadata ?
+          trackError.metadata : null;
+        const fullReason = guardMetadata ?
+          `${reason} [quotaGuard=${JSON.stringify(guardMetadata)}]` : reason;
 
         failedTracks.push({
           sourceTrack,
@@ -913,24 +1117,39 @@ async function processSyncJobTask({jobId, uid}) {
           strategy: "runtime_error",
           options: [],
           reason,
+          quotaGuard: guardMetadata,
           createdAt: new Date().toISOString(),
         });
 
         errors.push(buildTrackError(
             sourceTrack,
-            providerStatus ? `TARGET_HTTP_${providerStatus}` : "TARGET_RUNTIME_ERROR",
-            reason,
-            providerStatus === 429 || (providerStatus != null && providerStatus >= 500),
+            quotaExceeded ? "TARGET_QUOTA_EXCEEDED" :
+              (providerStatus ? `TARGET_HTTP_${providerStatus}` : "TARGET_RUNTIME_ERROR"),
+            fullReason,
+            quotaExceeded || providerStatus === 429 ||
+              (providerStatus != null && providerStatus >= 500),
         ));
 
         countersDelta.processed += 1;
         countersDelta.failed += 1;
+
+        if (quotaExceeded) {
+          quotaAbortContext = {
+            providerStatus,
+            providerReason: providerReason || trackError.providerReason || "quota_guard",
+            message: "Se alcanzo la cuota de la API destino durante la sincronizacion.",
+            quotaGuard: guardMetadata,
+          };
+          break;
+        }
       }
     }
 
-    const hasMore = Boolean(page.hasMore);
-    const nextOffset = typeof page.nextOffset === "number" ?
-      page.nextOffset : cursor.offset + page.tracks.length;
+    const hasMore = quotaAbortContext ? false : Boolean(page.hasMore);
+    const nextOffset = quotaAbortContext ?
+      cursor.offset + countersDelta.processed :
+      (typeof page.nextOffset === "number" ?
+        page.nextOffset : cursor.offset + page.tracks.length);
     const nextState = hasMore ? "running" : resolveFinalState(jobData, countersDelta);
 
     await applyChunkUpdate({
@@ -946,32 +1165,52 @@ async function processSyncJobTask({jobId, uid}) {
       errors,
       state: nextState,
       hasMore,
+      forceComputedProgress: Boolean(quotaAbortContext),
+      extraPayload: quotaAbortContext ? {
+        abortReason: "target_quota_exceeded",
+        quotaExceeded: true,
+        providerStatus: quotaAbortContext.providerStatus,
+        providerReason: quotaAbortContext.providerReason,
+        lastErrorAt: admin.firestore.FieldValue.serverTimestamp(),
+      } : {},
     });
 
-    await addJobEvent(jobId, uid, hasMore ? "SYNC_BATCH_PROCESSED" :
-      "SYNC_JOB_COMPLETED", {
+    await addJobEvent(jobId, uid, quotaAbortContext ?
+      "SYNC_JOB_ABORTED_QUOTA" :
+      (hasMore ? "SYNC_BATCH_PROCESSED" : "SYNC_JOB_COMPLETED"), {
       nextOffset,
       hasMore,
       countersDelta,
       destinationPlaylistId: destination.playlistId,
+      quotaAbort: quotaAbortContext,
     });
 
-    if (hasMore) {
+    if (hasMore && !quotaAbortContext) {
       await enqueueSyncJob({jobId, uid});
     }
   } catch (error) {
     const providerStatus = error && error.response ? error.response.status : null;
     const providerError = error && error.response ? error.response.data : null;
+    const providerReason = extractProviderReason(providerError);
+    const quotaExceeded = isQuotaAbortError(error, providerStatus, providerReason);
 
     await jobRef.set({
       state: "failed",
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       completedAt: admin.firestore.FieldValue.serverTimestamp(),
+      abortReason: quotaExceeded ? "target_quota_exceeded" : null,
+      quotaExceeded,
+      providerStatus,
+      providerReason: providerReason || (quotaExceeded ? "quota_guard" : null),
+      lastErrorAt: admin.firestore.FieldValue.serverTimestamp(),
       errors: admin.firestore.FieldValue.arrayUnion({
         trackId: "job",
-        code: error.code || "SYNC_ENGINE_FAILED",
-        message: error.message || "Error inesperado en sync engine.",
-        retriable: false,
+        code: quotaExceeded ? "TARGET_QUOTA_EXCEEDED" :
+          (error.code || "SYNC_ENGINE_FAILED"),
+        message: quotaExceeded ?
+          "Cuota de YouTube API alcanzada. Reintenta luego." :
+          (error.message || "Error inesperado en sync engine."),
+        retriable: quotaExceeded,
       }),
     }, {merge: true});
 

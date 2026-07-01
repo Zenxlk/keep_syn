@@ -19,7 +19,7 @@ app.use('/v1/integrations/youtube', verifyToken, checkAllowlist, youtubeRoutes);
 
 // Manejo de rutas no encontradas
 app.use((req, res) => {
-  res.error('Endpoint no encontrado.', 404);
+  res.error('4Endpoint no encontrado.', 404);
 });
 
 module.exports = app;
