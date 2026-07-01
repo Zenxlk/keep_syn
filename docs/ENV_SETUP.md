@@ -7,7 +7,7 @@ En Flutter no se guardan secretos reales. Solo valores publicos/configuracion:
 1. Copia el ejemplo:
 
 ```bash
-cp env/app_config.example.json env/app_config.local.json
+cp env/app_config.local.json env/app_config.local.json
 ```
 
 2. Completa tus valores en `env/app_config.local.json`.
