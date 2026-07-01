@@ -1,14 +1,21 @@
 const express = require("express");
-const spotifyController = require("./spotifyController");
+const {
+  getStatus,
+  linkAccount,
+  unlinkAccount,
+  listPlaylists,
+  listPlaylistTracks,
+} = require("./spotifyController");
 
 const router = express.Router();
 
-router.post("/link", spotifyController.linkAccount);
-router.post("/refresh", spotifyController.refreshAccount);
-router.post("/unlink", spotifyController.unlinkAccount);
-router.get("/status", spotifyController.getStatus);
-router.get("/playlists", spotifyController.getPlaylists);
-router.get("/playlists/:playlistId/tracks", spotifyController.getPlaylistTracks);
+const wrap = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next);
+
+router.get("/status", wrap(getStatus));
+router.post("/link", wrap(linkAccount));
+router.post("/unlink", wrap(unlinkAccount));
+router.get("/playlists", wrap(listPlaylists));
+router.get("/playlists/:playlistId/tracks", wrap(listPlaylistTracks));
 
 module.exports = router;
-

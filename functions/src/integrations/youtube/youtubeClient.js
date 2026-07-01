@@ -1,244 +1,154 @@
 const axios = require("axios");
-const axiosRetry = require("axios-retry").default;
+const {searchYTMusicTracks} = require("./ytmusicSearchClient");
+const {getCachedCandidates, setCachedCandidates} = require("./trackSearchCache");
 
-const youtubeApi = axios.create({
-  baseURL: "https://www.googleapis.com/youtube/v3",
-  timeout: 12000,
-});
+const YT_API = "https://www.googleapis.com/youtube/v3";
 
-axiosRetry(youtubeApi, {
-  retries: 3,
-  retryDelay: (retryCount, error) => {
-    if (error.response && error.response.status === 429) {
-      const retryAfter = error.response.headers["retry-after"];
-      if (retryAfter) {
-        return Number.parseInt(retryAfter, 10) * 1000;
-      }
-    }
-    return axiosRetry.exponentialDelay(retryCount);
-  },
-  retryCondition: (error) => {
-    const status = error.response ? error.response.status : null;
-    return axiosRetry.isNetworkOrIdempotentRequestError(error) ||
-      status === 429 ||
-      (status >= 500 && status < 600);
-  },
-});
-
-function createAuthHeaders(accessToken) {
-  return {
-    Authorization: `Bearer ${accessToken}`,
-  };
+function _authHeaders(accessToken) {
+  return {Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json"};
 }
 
-function stripYouTubeDecorators(value = "") {
-  return String(value || "")
-      .replace(/\s*[\[(][^\])]*(official|video|audio|lyrics?|visualizer|mv|hd|4k)[^\])]*[\])]/gi, " ")
-      .replace(/\s+-\s+(official|lyrics?|audio|video|visualizer|mv|topic).*$/gi, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-}
-
-function normalizeChannelName(channelTitle = "") {
-  return String(channelTitle || "")
-      .replace(/\s+-\s+topic$/i, "")
-      .trim();
-}
-
-function splitArtistsLabel(rawArtists = "") {
-  return String(rawArtists || "")
-      .split(/,|&| x | X |\bft\.?\b|\bfeat\.?\b|\bfeaturing\b/gi)
-      .map((value) => value.trim())
-      .filter(Boolean);
-}
-
-function normalizeYouTubeVideo(item = {}) {
-  const snippet = item.snippet || {};
-  const resourceId = snippet.resourceId || {};
-  const rawVideoId = item.id && typeof item.id === "object" ? item.id.videoId : item.id;
-  const videoId = rawVideoId || resourceId.videoId ||
-    (item.contentDetails && item.contentDetails.videoId) || null;
-  const cleanedTitle = stripYouTubeDecorators(snippet.title || "");
-  const titleParts = cleanedTitle.split(" - ");
-  const hasArtistPrefix = titleParts.length > 1;
-  const artists = hasArtistPrefix ?
-    splitArtistsLabel(titleParts[0]) :
-    [normalizeChannelName(snippet.videoOwnerChannelTitle || snippet.channelTitle || "")]
-  ;
-  const normalizedTitle = hasArtistPrefix ?
-    titleParts.slice(1).join(" - ").trim() : cleanedTitle;
-
-  return {
-    id: videoId,
-    videoId,
-    platform: "youtube",
-    title: normalizedTitle || cleanedTitle,
-    artists: artists.filter(Boolean),
-    album: "",
-    isrc: null,
-    uri: videoId ? `https://www.youtube.com/watch?v=${videoId}` : null,
-    externalIds: {isrc: null},
-    rawTitle: snippet.title || "",
-    channelTitle: normalizeChannelName(snippet.channelTitle || ""),
-    thumbnailUrl: snippet.thumbnails && snippet.thumbnails.default ?
-      snippet.thumbnails.default.url : null,
-  };
-}
-
-function normalizeYouTubePlaylist(item = {}) {
-  const snippet = item.snippet || {};
-  const contentDetails = item.contentDetails || {};
-  const status = item.status || {};
-
-  return {
-    id: item.id,
-    playlistId: item.id,
-    name: snippet.title || "",
-    description: snippet.description || "",
-    itemCount: contentDetails.itemCount || 0,
-    privacyStatus: status.privacyStatus || "private",
-  };
-}
-
-function buildYouTubeSearchQuery(track = {}) {
-  const artists = Array.isArray(track.artists) ? track.artists.filter(Boolean) : [];
-  return [track.title || track.name || "", ...artists].filter(Boolean).join(" ").trim();
-}
-
-async function listPlaylists({accessToken, limit = 50}) {
-  const playlists = [];
+/**
+ * Lists the authenticated user's YouTube playlists.
+ * @param {Object} params
+ * @param {string} params.accessToken
+ * @param {number} [params.limit=200]
+ * @return {Promise<Array<Object>>}
+ */
+async function listPlaylists({accessToken, limit = 200}) {
+  const items = [];
   let pageToken;
 
-  while (playlists.length < limit) {
-    const response = await youtubeApi.get("/playlists", {
-      headers: createAuthHeaders(accessToken),
+  while (items.length < limit) {
+    const {data} = await axios.get(`${YT_API}/playlists`, {
+      headers: _authHeaders(accessToken),
       params: {
-        part: "snippet,contentDetails,status",
+        part: "snippet",
         mine: true,
-        maxResults: Math.min(50, limit - playlists.length),
-        pageToken,
+        maxResults: Math.min(50, limit - items.length),
+        ...(pageToken ? {pageToken} : {}),
       },
     });
 
-    const items = Array.isArray(response.data.items) ? response.data.items : [];
-    playlists.push(...items.map(normalizeYouTubePlaylist));
-
-    pageToken = response.data.nextPageToken;
-    if (!pageToken || items.length === 0) {
-      break;
-    }
+    items.push(...(data.items || []));
+    pageToken = data.nextPageToken;
+    if (!pageToken) break;
   }
 
-  return playlists;
+  return items;
 }
 
+/**
+ * Creates a new private YouTube playlist.
+ * @param {Object} params
+ * @param {string} params.accessToken
+ * @param {string} params.name
+ * @param {string} [params.description]
+ * @return {Promise<Object>}
+ */
 async function createPlaylist({accessToken, name, description = ""}) {
-  const response = await youtubeApi.post(
-      "/playlists",
+  const {data} = await axios.post(
+      `${YT_API}/playlists`,
       {
-        snippet: {
-          title: name,
-          description,
-        },
-        status: {
-          privacyStatus: "private",
-        },
+        snippet: {title: name, description},
+        status: {privacyStatus: "private"},
       },
       {
-        headers: createAuthHeaders(accessToken),
-        params: {
-          part: "snippet,status",
-        },
+        headers: _authHeaders(accessToken),
+        params: {part: "snippet,status"},
       },
   );
-
-  return normalizeYouTubePlaylist(response.data);
+  return data;
 }
 
+/**
+ * Lists all tracks in a YouTube playlist.
+ * @param {Object} params
+ * @param {string} params.accessToken
+ * @param {string} params.playlistId
+ * @param {number} [params.limit=500]
+ * @return {Promise<Array<Object>>}
+ */
 async function listPlaylistTracks({accessToken, playlistId, limit = 500}) {
-  const tracks = [];
+  const items = [];
   let pageToken;
 
-  while (tracks.length < limit) {
-    const response = await youtubeApi.get("/playlistItems", {
-      headers: createAuthHeaders(accessToken),
+  while (items.length < limit) {
+    const {data} = await axios.get(`${YT_API}/playlistItems`, {
+      headers: _authHeaders(accessToken),
       params: {
-        part: "snippet,contentDetails",
+        part: "snippet",
         playlistId,
-        maxResults: Math.min(50, limit - tracks.length),
-        pageToken,
+        maxResults: 50,
+        ...(pageToken ? {pageToken} : {}),
       },
     });
 
-    const items = Array.isArray(response.data.items) ? response.data.items : [];
-    tracks.push(...items.map(normalizeYouTubeVideo).filter((item) => Boolean(item.id)));
-
-    pageToken = response.data.nextPageToken;
-    if (!pageToken || items.length === 0) {
-      break;
-    }
+    items.push(...(data.items || []));
+    pageToken = data.nextPageToken;
+    if (!pageToken) break;
   }
 
-  return tracks;
+  return items;
 }
 
+/**
+ * Searches for tracks on YouTube Music using ytmusic-api (no quota cost).
+ * Results are cached in Firestore to avoid redundant searches.
+ * Falls back to empty array if ytmusic-api is unavailable.
+ * @param {Object} params
+ * @param {string} params.accessToken - Kept for interface compatibility (unused)
+ * @param {Object} params.track
+ * @param {number} [params.limit=5]
+ * @return {Promise<Array<Object>>}
+ */
 async function searchTracks({accessToken, track, limit = 5}) {
-  const query = buildYouTubeSearchQuery(track);
-  if (!query) {
-    return [];
+  const cached = await getCachedCandidates(track);
+  if (cached) return cached.slice(0, limit);
+
+  let candidates;
+  try {
+    candidates = await searchYTMusicTracks({track, limit});
+  } catch (_) {
+    candidates = [];
   }
 
-  const response = await youtubeApi.get("/search", {
-    headers: createAuthHeaders(accessToken),
-    params: {
-      part: "snippet",
-      q: query,
-      type: "video",
-      videoCategoryId: "10",
-      maxResults: Math.min(limit, 25),
-      order: "relevance",
-    },
-  });
+  if (candidates.length > 0) {
+    setCachedCandidates(track, candidates).catch(() => {});
+  }
 
-  const items = Array.isArray(response.data.items) ? response.data.items : [];
-  return items.map(normalizeYouTubeVideo).filter((item) => Boolean(item.id));
+  return candidates;
 }
 
+/**
+ * Adds a track to a YouTube playlist.
+ * @param {Object} params
+ * @param {string} params.accessToken
+ * @param {string} params.playlistId
+ * @param {Object} params.track - Must have `id` (videoId)
+ * @return {Promise<Object>}
+ */
 async function addTrackToPlaylist({accessToken, playlistId, track}) {
-  const videoId = track.videoId || track.id;
-  const response = await youtubeApi.post(
-      "/playlistItems",
+  const {data} = await axios.post(
+      `${YT_API}/playlistItems`,
       {
         snippet: {
           playlistId,
-          resourceId: {
-            kind: "youtube#video",
-            videoId,
-          },
+          resourceId: {kind: "youtube#video", videoId: track.id},
         },
       },
       {
-        headers: createAuthHeaders(accessToken),
-        params: {
-          part: "snippet",
-        },
+        headers: _authHeaders(accessToken),
+        params: {part: "snippet"},
       },
   );
-
-  return {
-    playlistItemId: response.data.id,
-    videoId,
-  };
+  return data;
 }
 
 module.exports = {
-  addTrackToPlaylist,
-  buildYouTubeSearchQuery,
+  listPlaylists,
   createPlaylist,
   listPlaylistTracks,
-  listPlaylists,
-  normalizeYouTubePlaylist,
-  normalizeYouTubeVideo,
   searchTracks,
-  stripYouTubeDecorators,
+  addTrackToPlaylist,
 };

@@ -1,12 +1,13 @@
 const express = require("express");
-const youtubeController = require("./youtubeController");
+const {getStatus, linkAccount, unlinkAccount} = require("./youtubeController");
 
 const router = express.Router();
 
-router.post("/link", youtubeController.linkAccount);
-router.post("/refresh", youtubeController.refreshAccount);
-router.post("/unlink", youtubeController.unlinkAccount);
-router.get("/status", youtubeController.getStatus);
+const wrap = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next);
+
+router.get("/status", wrap(getStatus));
+router.post("/link", wrap(linkAccount));
+router.post("/unlink", wrap(unlinkAccount));
 
 module.exports = router;
-
