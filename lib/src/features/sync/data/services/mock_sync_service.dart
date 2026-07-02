@@ -10,6 +10,28 @@ class MockSyncService implements ISyncService {
   final Set<String> _cancelledJobIds = <String>{};
 
   @override
+  Future<SyncJobStatus?> getLastJobStatus() async => null;
+
+  @override
+  Future<SyncResult> reconnectToJob({
+    required String jobId,
+    required void Function(SyncProgress progress) onProgress,
+  }) async {
+    // Mock always returns a completed job for reconnect.
+    return SyncResult(
+      jobId: jobId,
+      status: SyncResultStatus.failed,
+      processed: 0,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      errors: const <SyncTrackError>[],
+      completedAt: DateTime.now(),
+    );
+  }
+
+  @override
   Future<void> cancelSync({required String jobId}) async {
     _cancelledJobIds.add(jobId);
   }
