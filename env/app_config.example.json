@@ -1,6 +1,6 @@
 {
-  "SERVER_CLIENT_ID": "OWN_GOOGLE_USER_ID",
-  "SYNC_API_BASE_URL": "https://us-central1-keepsyn-0001.cloudfunctions.net/api/v1",
+  "SERVER_CLIENT_ID": "TU_GOOGLE_SERVER_CLIENT_ID.apps.googleusercontent.com",
+  "SYNC_API_BASE_URL": "https://us-central1-TU_PROYECTO.cloudfunctions.net/api",
   "USE_REAL_SYNC_API": "false",
   "SPOTIFY_CLIENT_ID": "TU_SPOTIFY_CLIENT_ID",
   "SPOTIFY_REDIRECT_URI": "keepsyn://spotify-callback"
