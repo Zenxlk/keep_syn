@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:keepsyn_app/src/features/sync/presentation/riverpod/sync_controller_state.dart';
 import 'package:keepsyn_app/src/features/sync/presentation/riverpod/sync_providers.dart';
 
@@ -125,11 +126,23 @@ class SyncScreen extends ConsumerWidget {
               icon: const Icon(Icons.stop_circle_outlined),
               label: const Text('Cancelar sincronizacion'),
             ),
-          if (state.isFinished || state.isIdle)
+          if (state.isFinished || (state.isIdle && state.result != null))
+            FilledButton.icon(
+              onPressed: () {
+                notifier.reset();
+                if (context.canPop()) context.pop();
+              },
+              icon: const Icon(Icons.check_rounded),
+              label: const Text('Listo — sincronizar otra'),
+            ),
+          if (state.hasError)
             OutlinedButton.icon(
-              onPressed: () => notifier.reset(),
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Limpiar estado'),
+              onPressed: () {
+                notifier.reset();
+                if (context.canPop()) context.pop();
+              },
+              icon: const Icon(Icons.arrow_back_rounded),
+              label: const Text('Volver'),
             ),
         ],
       ),
