@@ -13,10 +13,61 @@ class SharedPreferencesSyncLocalStore implements ISyncLocalStore {
       : _prefs = prefs;
 
   @override
+  Future<void> saveHistoryEntry(SyncHistoryEntry entry) async {
+    final existing = await loadHistory();
+    final updated = [entry, ...existing]
+        .take(AppConstants.syncHistoryMaxEntries)
+        .toList(growable: false);
+
+    final encoded = updated
+        .map((e) => <String, dynamic>{
+              'jobId': e.jobId,
+              'status': e.status.name,
+              'completedAt': e.completedAt.toIso8601String(),
+              'playlistName': e.playlistName,
+              'created': e.created,
+              'skipped': e.skipped,
+              'failed': e.failed,
+              'processed': e.processed,
+            })
+        .toList(growable: false);
+
+    await _prefs.setString(AppConstants.keySyncHistory, jsonEncode(encoded));
+  }
+
+  @override
+  Future<List<SyncHistoryEntry>> loadHistory() async {
+    final raw = _prefs.getString(AppConstants.keySyncHistory);
+    if (raw == null) return const <SyncHistoryEntry>[];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const <SyncHistoryEntry>[];
+      return decoded.whereType<Map>().map((item) {
+        final status = _parseStatus(item['status']?.toString());
+        final at = DateTime.tryParse(item['completedAt']?.toString() ?? '');
+        if (status == null || at == null) return null;
+        return SyncHistoryEntry(
+          jobId: item['jobId']?.toString() ?? '',
+          status: status,
+          completedAt: at,
+          playlistName: item['playlistName']?.toString(),
+          created: (item['created'] as num?)?.toInt() ?? 0,
+          skipped: (item['skipped'] as num?)?.toInt() ?? 0,
+          failed: (item['failed'] as num?)?.toInt() ?? 0,
+          processed: (item['processed'] as num?)?.toInt() ?? 0,
+        );
+      }).whereType<SyncHistoryEntry>().toList(growable: false);
+    } catch (_) {
+      return const <SyncHistoryEntry>[];
+    }
+  }
+
+  @override
   Future<void> clear() async {
     await _prefs.remove(AppConstants.keyLastSyncStatus);
     await _prefs.remove(AppConstants.keyLastSyncDate);
     await _prefs.remove(AppConstants.keySyncRecentErrors);
+    await _prefs.remove(AppConstants.keySyncHistory);
   }
 
   @override

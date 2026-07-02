@@ -13,9 +13,33 @@ class SyncLocalSnapshot {
   });
 }
 
+class SyncHistoryEntry {
+  final String jobId;
+  final SyncStatus status;
+  final DateTime completedAt;
+  final String? playlistName;
+  final int created;
+  final int skipped;
+  final int failed;
+  final int processed;
+
+  const SyncHistoryEntry({
+    required this.jobId,
+    required this.status,
+    required this.completedAt,
+    this.playlistName,
+    required this.created,
+    required this.skipped,
+    required this.failed,
+    required this.processed,
+  });
+}
+
 abstract class ISyncLocalStore {
   Future<void> saveSnapshot(SyncLocalSnapshot snapshot);
   Future<SyncLocalSnapshot> loadSnapshot();
+  Future<void> saveHistoryEntry(SyncHistoryEntry entry);
+  Future<List<SyncHistoryEntry>> loadHistory();
   Future<void> clear();
 }
 

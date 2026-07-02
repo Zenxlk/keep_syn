@@ -17,6 +17,8 @@ class AppConstants {
   static const String keyLastSyncDate = 'last_sync_date';
   static const String keyLastSyncStatus = 'last_sync_status';
   static const String keySyncRecentErrors = 'sync_recent_errors';
+  static const String keySyncHistory = 'sync_history';
+  static const int syncHistoryMaxEntries = 20;
 
   // ─── API ────────────────────────────────────────────────────────────────────
   static const String syncApiBaseUrlDefault =

@@ -47,6 +47,12 @@ ISyncRepository syncRepository(Ref ref) {
   return SyncRepositoryImpl(syncService: ref.watch(syncServiceProvider));
 }
 
+@riverpod
+Future<List<SyncHistoryEntry>> syncHistory(Ref ref) async {
+  final localStore = await ref.watch(syncLocalStoreProvider.future);
+  return localStore.loadHistory();
+}
+
 @Riverpod(keepAlive: true)
 class SyncController extends _$SyncController {
   StreamSubscription<SyncProgress>? _progressSubscription;
@@ -156,6 +162,8 @@ class SyncController extends _$SyncController {
           status: mappedStatus,
           completedAt: now,
           errors: syncResult.errors,
+          playlistName: sourcePlaylist.name,
+          result: syncResult,
         );
       },
     );
@@ -356,6 +364,7 @@ class SyncController extends _$SyncController {
           status: mappedStatus,
           completedAt: now,
           errors: syncResult.errors,
+          result: syncResult,
         );
       },
     );
@@ -365,6 +374,8 @@ class SyncController extends _$SyncController {
     required SyncStatus status,
     required DateTime completedAt,
     required List<SyncTrackError> errors,
+    String? playlistName,
+    SyncResult? result,
   }) async {
     try {
       final localStore = await ref.read(syncLocalStoreProvider.future);
@@ -375,6 +386,20 @@ class SyncController extends _$SyncController {
           recentErrors: errors,
         ),
       );
+      if (result != null) {
+        await localStore.saveHistoryEntry(
+          SyncHistoryEntry(
+            jobId: result.jobId,
+            status: status,
+            completedAt: completedAt,
+            playlistName: playlistName,
+            created: result.created,
+            skipped: result.skipped,
+            failed: result.failed,
+            processed: result.processed,
+          ),
+        );
+      }
     } catch (_) {
       // La persistencia local no bloquea el resultado de negocio.
     }

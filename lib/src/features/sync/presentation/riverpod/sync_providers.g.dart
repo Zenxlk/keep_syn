@@ -172,6 +172,47 @@ final class SyncRepositoryProvider
 
 String _$syncRepositoryHash() => r'63019b08f6130d160c31a0c5a0dc0b69316e1096';
 
+@ProviderFor(syncHistory)
+final syncHistoryProvider = SyncHistoryProvider._();
+
+final class SyncHistoryProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<List<SyncHistoryEntry>>,
+          List<SyncHistoryEntry>,
+          FutureOr<List<SyncHistoryEntry>>
+        >
+    with
+        $FutureModifier<List<SyncHistoryEntry>>,
+        $FutureProvider<List<SyncHistoryEntry>> {
+  SyncHistoryProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'syncHistoryProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$syncHistoryHash();
+
+  @$internal
+  @override
+  $FutureProviderElement<List<SyncHistoryEntry>> $createElement(
+    $ProviderPointer pointer,
+  ) => $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<List<SyncHistoryEntry>> create(Ref ref) {
+    return syncHistory(ref);
+  }
+}
+
+String _$syncHistoryHash() => r'34748f53e5bad6b2e2ee4501eb924e3c7eb2c37d';
+
 @ProviderFor(SyncController)
 final syncControllerProvider = SyncControllerProvider._();
 
@@ -204,7 +245,7 @@ final class SyncControllerProvider
   }
 }
 
-String _$syncControllerHash() => r'f3ace3a3b4f58cc81f8c626ba84ba6de6de21056';
+String _$syncControllerHash() => r'576037cda0d32958cc9c1489d79723b7ea4c8475';
 
 abstract class _$SyncController extends $Notifier<SyncControllerState> {
   SyncControllerState build();
