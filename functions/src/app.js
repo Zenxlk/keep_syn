@@ -19,7 +19,15 @@ app.use('/v1/integrations/youtube', verifyToken, checkAllowlist, youtubeRoutes);
 
 // Manejo de rutas no encontradas
 app.use((req, res) => {
-  res.error('4Endpoint no encontrado.', 404);
+  res.error('Endpoint no encontrado.', 404);
+});
+
+// Error handler global — captura errores de next(err) y los devuelve como JSON
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('[GlobalErrorHandler]', err);
+  const message = err?.message || 'Error interno del servidor.';
+  res.error(message, 500);
 });
 
 module.exports = app;
