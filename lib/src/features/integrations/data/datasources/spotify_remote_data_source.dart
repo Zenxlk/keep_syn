@@ -164,6 +164,7 @@ class SpotifyRemoteDataSource {
   String _extractBackendMessage(DioException e) {
     final data = e.response?.data;
     if (data is Map<String, dynamic>) {
+      // Formato estándar de la API: { status, message, data }
       final message = data['message'];
       final nestedData = data['data'];
       if (nestedData is Map<String, dynamic>) {
@@ -188,6 +189,15 @@ class SpotifyRemoteDataSource {
 
       if (message is String && message.trim().isNotEmpty) {
         return message;
+      }
+
+      // Formato de error a nivel plataforma de Firebase: { error: { status, message } }
+      final firebaseError = data['error'];
+      if (firebaseError is Map<String, dynamic>) {
+        final fbMessage = firebaseError['message'];
+        if (fbMessage is String && fbMessage.trim().isNotEmpty) {
+          return fbMessage;
+        }
       }
     }
 
