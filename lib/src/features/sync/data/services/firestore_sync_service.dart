@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
 import 'package:keepsyn_app/src/core/error/exceptions.dart';
 import 'package:keepsyn_app/src/features/sync/data/services/sync_service.dart';
@@ -11,11 +10,13 @@ import 'package:keepsyn_app/src/features/sync/domain/entities/sync_result.dart';
 
 class FirestoreSyncService implements ISyncService {
   final Dio _dio;
-  final FirebaseFirestore _firestore;
+  final Duration _pollInterval;
 
-  FirestoreSyncService({required Dio dio, FirebaseFirestore? firestore})
-      : _dio = dio,
-        _firestore = firestore ?? FirebaseFirestore.instance;
+  FirestoreSyncService({
+    required Dio dio,
+    Duration pollInterval = const Duration(seconds: 3),
+  })  : _dio = dio,
+        _pollInterval = pollInterval;
 
   @override
   Future<SyncResult> syncPlaylist({
@@ -39,58 +40,50 @@ class FirestoreSyncService implements ISyncService {
       );
     }
 
-    final jobId = (createData['data'] as Map<String, dynamic>?)?['jobId']?.toString();
+    final jobId =
+        (createData['data'] as Map<String, dynamic>?)?['jobId']?.toString();
     if (jobId == null || jobId.isEmpty) {
       throw const ServerException('Respuesta invalida: jobId ausente.');
     }
 
-    final completer = Completer<SyncResult>();
-    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? subscription;
+    while (true) {
+      await Future<void>.delayed(_pollInterval);
 
-    subscription = _firestore
-        .collection('sync_jobs')
-        .doc(jobId)
-        .snapshots()
-        .listen(
-      (snapshot) {
-        if (!snapshot.exists) return;
-        final data = snapshot.data();
-        if (data == null) return;
+      final statusResponse = await _dio.get<Map<String, dynamic>>(
+        '/v1/sync/jobs/$jobId',
+      );
 
-        final state = data['state']?.toString() ?? 'running';
-        final counters = _parseCounters(data['counters']);
-        final totalTracks = _parseTotalTracks(data, sourcePlaylist.totalTracks);
-
-        onProgress(
-          SyncProgress(
-            jobId: jobId,
-            processed: counters['processed'] ?? 0,
-            total: totalTracks,
-            message: _stateMessage(state),
-          ),
+      final statusData = statusResponse.data;
+      if (statusData == null || statusData['status'] != 'OK') {
+        throw ServerException(
+          statusData?['message']?.toString() ?? 'Error consultando sync job.',
         );
+      }
 
-        if (_isTerminal(state) && !completer.isCompleted) {
-          completer.complete(
-            _buildResult(
-              jobId: jobId,
-              state: state,
-              counters: counters,
-              rawErrors: data['errors'],
-            ),
-          );
-          subscription?.cancel();
-        }
-      },
-      onError: (Object err) {
-        if (!completer.isCompleted) {
-          completer.completeError(ServerException('Error escuchando sync job: $err'));
-          subscription?.cancel();
-        }
-      },
-    );
+      final jobData =
+          (statusData['data'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+      final state = jobData['state']?.toString() ?? 'running';
+      final counters = _parseCounters(jobData['counters']);
+      final totalTracks = _parseTotalTracks(jobData, sourcePlaylist.totalTracks);
 
-    return completer.future;
+      onProgress(
+        SyncProgress(
+          jobId: job.jobId,
+          processed: counters['processed'] ?? 0,
+          total: totalTracks,
+          message: _stateMessage(state),
+        ),
+      );
+
+      if (_isTerminal(state)) {
+        return _buildResult(
+          jobId: jobId,
+          state: state,
+          counters: counters,
+          rawErrors: jobData['errors'],
+        );
+      }
+    }
   }
 
   @override
@@ -100,7 +93,8 @@ class FirestoreSyncService implements ISyncService {
     );
     final data = response.data;
     if (data != null && data['status'] != 'OK') {
-      throw ServerException(data['message']?.toString() ?? 'Error cancelando job.');
+      throw ServerException(
+          data['message']?.toString() ?? 'Error cancelando job.');
     }
   }
 
@@ -131,9 +125,9 @@ class FirestoreSyncService implements ISyncService {
   }
 
   int _parseTotalTracks(Map<String, dynamic> data, int fallback) {
-    final source = data['source'];
-    if (source is Map<String, dynamic>) {
-      final total = source['totalTracks'];
+    final snapshot = data['sourceSnapshot'];
+    if (snapshot is Map<String, dynamic>) {
+      final total = snapshot['totalTracks'];
       if (total is num) return total.toInt();
     }
     return fallback;
@@ -141,7 +135,13 @@ class FirestoreSyncService implements ISyncService {
 
   Map<String, int> _parseCounters(Object? raw) {
     if (raw is! Map) {
-      return {'processed': 0, 'created': 0, 'updated': 0, 'skipped': 0, 'failed': 0};
+      return {
+        'processed': 0,
+        'created': 0,
+        'updated': 0,
+        'skipped': 0,
+        'failed': 0,
+      };
     }
     int toInt(Object? v) => v is num ? v.toInt() : 0;
     return {
