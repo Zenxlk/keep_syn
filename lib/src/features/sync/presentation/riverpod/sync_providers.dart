@@ -57,7 +57,7 @@ class SyncController extends _$SyncController {
       await _progressSubscription?.cancel();
     });
 
-    _hydrateSnapshot();
+    _hydrateAndReconcile();
     return const SyncControllerState.idle();
   }
 
@@ -115,6 +115,9 @@ class SyncController extends _$SyncController {
               failure.message ?? 'Fallo durante la sincronizacion.',
         );
 
+        await _progressSubscription?.cancel();
+        _progressSubscription = null;
+
         await _persistSnapshot(
           status: SyncStatus.failed,
           completedAt: now,
@@ -146,6 +149,9 @@ class SyncController extends _$SyncController {
                   : 'Sincronizacion completada correctamente.',
         );
 
+        await _progressSubscription?.cancel();
+        _progressSubscription = null;
+
         await _persistSnapshot(
           status: mappedStatus,
           completedAt: now,
@@ -156,14 +162,14 @@ class SyncController extends _$SyncController {
   }
 
   Future<void> cancelActiveSync() async {
-    final activeJob = state.activeJob;
-    if (activeJob == null || !state.isRunning) {
+    final jobId = state.sessionActiveJobId ?? state.activeJob?.jobId;
+    if (jobId == null || !state.isRunning) {
       return;
     }
 
     final result = await ref
         .read(syncRepositoryProvider)
-        .cancelSync(jobId: activeJob.jobId);
+        .cancelSync(jobId: jobId);
 
     await result.fold(
       (failure) async {
@@ -211,6 +217,8 @@ class SyncController extends _$SyncController {
   }
 
   void reset() {
+    _progressSubscription?.cancel();
+    _progressSubscription = null;
     state = state.copyWith(
       status: SyncStatus.idle,
       activeJob: null,
@@ -255,19 +263,102 @@ class SyncController extends _$SyncController {
     ];
   }
 
-  Future<void> _hydrateSnapshot() async {
+  Future<void> _hydrateAndReconcile() async {
+    // 1. Hydrate from local store (last known terminal status).
     try {
       final localStore = await ref.read(syncLocalStoreProvider.future);
       final snapshot = await localStore.loadSnapshot();
-
       state = state.copyWith(
         lastSyncStatus: snapshot.lastStatus,
         lastSyncAt: snapshot.lastSyncAt,
         recentErrors: snapshot.recentErrors,
       );
+    } catch (_) {}
+
+    // 2. Reconcile with backend: if there is an active job we don't own in
+    //    this session, reconnect to it so the user can see its progress and
+    //    new syncs are correctly blocked/unblocked.
+    await _reconcileWithLastJob();
+  }
+
+  Future<void> _reconcileWithLastJob() async {
+    if (state.sessionSyncInProgress) return;
+    try {
+      final lastJob =
+          await ref.read(syncRepositoryProvider).getLastJobStatus();
+      if (lastJob == null || !lastJob.isActive) return;
+
+      // Backend has a non-terminal job this session doesn't own — reconnect.
+      state = state.copyWith(
+        status: SyncStatus.running,
+        sessionSyncInProgress: true,
+        sessionActiveJobId: lastJob.jobId,
+        progressMessage: 'Reconectando a sincronizacion activa...',
+      );
+
+      unawaited(_runReconnectPolling(lastJob.jobId));
     } catch (_) {
-      // La hidratacion local no debe romper el flujo.
+      // Reconciliation is best-effort; failures must never block the UI.
     }
+  }
+
+  Future<void> _runReconnectPolling(String backendJobId) async {
+    final result = await ref.read(syncRepositoryProvider).reconnectToJob(
+          jobId: backendJobId,
+          onProgress: (progress) {
+            if (!state.sessionSyncInProgress) return;
+            state = state.copyWith(
+              status: SyncStatus.running,
+              progress: progress.value,
+              progressMessage: progress.message,
+              clearFailure: true,
+            );
+          },
+        );
+
+    await result.fold(
+      (failure) async {
+        final now = DateTime.now();
+        state = state.copyWith(
+          status: SyncStatus.failed,
+          failure: failure,
+          progress: 0,
+          sessionSyncInProgress: false,
+          sessionActiveJobId: null,
+          lastSyncStatus: SyncStatus.failed,
+          lastSyncAt: now,
+          progressMessage: failure.message ?? 'La reconexion fallo.',
+        );
+        await _persistSnapshot(
+          status: SyncStatus.failed,
+          completedAt: now,
+          errors: [],
+        );
+      },
+      (syncResult) async {
+        final mappedStatus = _mapResultStatus(syncResult.status);
+        final now = syncResult.completedAt;
+        state = state.copyWith(
+          status: mappedStatus,
+          result: syncResult,
+          progress: 1,
+          sessionSyncInProgress: false,
+          sessionActiveJobId: null,
+          clearFailure: true,
+          lastSyncStatus: mappedStatus,
+          lastSyncAt: now,
+          recentErrors: syncResult.errors,
+          progressMessage: syncResult.hasFailures
+              ? 'Sincronizacion finalizada con algunos errores.'
+              : 'Sincronizacion completada correctamente.',
+        );
+        await _persistSnapshot(
+          status: mappedStatus,
+          completedAt: now,
+          errors: syncResult.errors,
+        );
+      },
+    );
   }
 
   Future<void> _persistSnapshot({

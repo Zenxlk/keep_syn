@@ -11,12 +11,15 @@ import 'package:keepsyn_app/src/features/sync/domain/entities/sync_result.dart';
 class FirestoreSyncService implements ISyncService {
   final Dio _dio;
   final Duration _pollInterval;
+  final Duration _maxPollDuration;
 
   FirestoreSyncService({
     required Dio dio,
     Duration pollInterval = const Duration(seconds: 3),
+    Duration maxPollDuration = const Duration(minutes: 20),
   })  : _dio = dio,
-        _pollInterval = pollInterval;
+        _pollInterval = pollInterval,
+        _maxPollDuration = maxPollDuration;
 
   @override
   Future<SyncResult> syncPlaylist({
@@ -46,11 +49,76 @@ class FirestoreSyncService implements ISyncService {
       throw const ServerException('Respuesta invalida: jobId ausente.');
     }
 
+    return _pollJob(
+      backendJobId: jobId,
+      localJobId: job.jobId,
+      estimatedTotal: sourcePlaylist.totalTracks,
+      onProgress: onProgress,
+    );
+  }
+
+  @override
+  Future<void> cancelSync({required String jobId}) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/v1/sync/jobs/$jobId/cancel',
+    );
+    final data = response.data;
+    if (data != null && data['status'] != 'OK') {
+      throw ServerException(
+          data['message']?.toString() ?? 'Error cancelando job.');
+    }
+  }
+
+  @override
+  Future<SyncJobStatus?> getLastJobStatus() async {
+    try {
+      final response =
+          await _dio.get<Map<String, dynamic>>('/v1/sync/jobs/last');
+      final data = response.data;
+      if (data == null || data['status'] != 'OK') return null;
+      final jobData = data['data'] as Map<String, dynamic>?;
+      if (jobData == null) return null;
+      final jobId = jobData['jobId']?.toString();
+      final state = jobData['state']?.toString();
+      if (jobId == null || jobId.isEmpty || state == null) return null;
+      return SyncJobStatus(jobId: jobId, state: state);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<SyncResult> reconnectToJob({
+    required String jobId,
+    required void Function(SyncProgress progress) onProgress,
+  }) {
+    return _pollJob(
+      backendJobId: jobId,
+      localJobId: jobId,
+      estimatedTotal: 0,
+      onProgress: onProgress,
+    );
+  }
+
+  Future<SyncResult> _pollJob({
+    required String backendJobId,
+    required String localJobId,
+    required int estimatedTotal,
+    required void Function(SyncProgress progress) onProgress,
+  }) async {
+    final deadline = DateTime.now().add(_maxPollDuration);
+
     while (true) {
       await Future<void>.delayed(_pollInterval);
 
+      if (DateTime.now().isAfter(deadline)) {
+        throw const ServerException(
+          'Tiempo de espera agotado. El job no completó en el tiempo esperado.',
+        );
+      }
+
       final statusResponse = await _dio.get<Map<String, dynamic>>(
-        '/v1/sync/jobs/$jobId',
+        '/v1/sync/jobs/$backendJobId',
       );
 
       final statusData = statusResponse.data;
@@ -64,11 +132,11 @@ class FirestoreSyncService implements ISyncService {
           (statusData['data'] as Map<String, dynamic>?) ?? <String, dynamic>{};
       final state = jobData['state']?.toString() ?? 'running';
       final counters = _parseCounters(jobData['counters']);
-      final totalTracks = _parseTotalTracks(jobData, sourcePlaylist.totalTracks);
+      final totalTracks = _parseTotalTracks(jobData, estimatedTotal);
 
       onProgress(
         SyncProgress(
-          jobId: job.jobId,
+          jobId: localJobId,
           processed: counters['processed'] ?? 0,
           total: totalTracks,
           message: _stateMessage(state),
@@ -77,24 +145,12 @@ class FirestoreSyncService implements ISyncService {
 
       if (_isTerminal(state)) {
         return _buildResult(
-          jobId: jobId,
+          jobId: backendJobId,
           state: state,
           counters: counters,
           rawErrors: jobData['errors'],
         );
       }
-    }
-  }
-
-  @override
-  Future<void> cancelSync({required String jobId}) async {
-    final response = await _dio.post<Map<String, dynamic>>(
-      '/v1/sync/jobs/$jobId/cancel',
-    );
-    final data = response.data;
-    if (data != null && data['status'] != 'OK') {
-      throw ServerException(
-          data['message']?.toString() ?? 'Error cancelando job.');
     }
   }
 

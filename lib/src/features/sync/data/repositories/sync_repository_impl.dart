@@ -9,6 +9,9 @@ import 'package:keepsyn_app/src/features/sync/domain/entities/sync_progress.dart
 import 'package:keepsyn_app/src/features/sync/domain/entities/sync_result.dart';
 import 'package:keepsyn_app/src/features/sync/domain/repositories/sync_repository.dart';
 
+export 'package:keepsyn_app/src/features/sync/data/services/sync_service.dart'
+    show SyncJobStatus;
+
 class SyncRepositoryImpl implements ISyncRepository {
   final ISyncService _syncService;
 
@@ -59,6 +62,31 @@ class SyncRepositoryImpl implements ISyncRepository {
   @override
   Stream<SyncResult> watchSyncResults({required String jobId}) {
     return _resultController.stream.where((result) => result.jobId == jobId);
+  }
+
+  @override
+  Future<SyncJobStatus?> getLastJobStatus() async {
+    try {
+      return await _syncService.getLastJobStatus();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<Either<Failure, SyncResult>> reconnectToJob({
+    required String jobId,
+    required void Function(SyncProgress progress) onProgress,
+  }) async {
+    try {
+      final result = await _syncService.reconnectToJob(
+        jobId: jobId,
+        onProgress: onProgress,
+      );
+      return Right(result);
+    } catch (e) {
+      return Left(SyncFailure(message: 'Error reconectando al job: $e'));
+    }
   }
 }
 
