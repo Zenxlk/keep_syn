@@ -49,6 +49,7 @@ dependencies:
   dio: ^5.9.0
   flutter_web_auth_2: ^5.0.3
   cloud_firestore: ^6.6.0
+  firebase_messaging: ^16.4.1
   shimmer: ^3.0.0
 
 dev_dependencies:
