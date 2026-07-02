@@ -1257,6 +1257,10 @@ async function processSyncJobTask({jobId, uid}) {
 
     if (hasMore && !quotaAbortContext) {
       await enqueueSyncJob({jobId, uid});
+    } else {
+      const terminalState = quotaAbortContext ? "failed" : nextState;
+      const playlistName = jobData.sourceSnapshot && jobData.sourceSnapshot.name;
+      await sendSyncNotification(uid, terminalState, playlistName);
     }
   } catch (error) {
     const providerStatus = error && error.response ? error.response.status : null;
@@ -1291,6 +1295,9 @@ async function processSyncJobTask({jobId, uid}) {
       providerError,
     });
 
+    const failedPlaylistName = jobData && jobData.sourceSnapshot && jobData.sourceSnapshot.name;
+    await sendSyncNotification(uid, "failed", failedPlaylistName);
+
     await logSyncError({
       uid,
       message: "Fallo el procesamiento del job de sincronizacion.",
@@ -1303,6 +1310,54 @@ async function processSyncJobTask({jobId, uid}) {
         providerError,
       },
     });
+  }
+}
+
+/**
+ * Sends an FCM push notification to all devices registered for a user.
+ * Silently ignores errors so a notification failure never breaks the sync flow.
+ *
+ * @param {string} uid
+ * @param {string} state  Final job state (success | partial_success | failed | cancelled)
+ * @param {string=} playlistName
+ */
+async function sendSyncNotification(uid, state, playlistName) {
+  try {
+    const deviceDoc = await admin.firestore()
+      .collection("user_devices").doc(uid).get();
+    if (!deviceDoc.exists) return;
+
+    const tokens = deviceDoc.data().fcmTokens;
+    if (!Array.isArray(tokens) || tokens.length === 0) return;
+
+    const titles = {
+      success: "Sync completado",
+      partial_success: "Sync completado con errores",
+      failed: "Sync fallido",
+      cancelled: "Sync cancelado",
+    };
+    const title = titles[state] || "Sync finalizado";
+    const body = playlistName
+      ? `Playlist: ${playlistName}`
+      : "Tu sincronización terminó.";
+
+    const response = await admin.messaging().sendEachForMulticast({
+      tokens,
+      notification: {title, body},
+      data: {type: "sync_complete", state},
+      android: {priority: "high"},
+    });
+
+    // Remove tokens that are no longer valid
+    const staleTokens = tokens.filter((_, i) => !response.responses[i].success);
+    if (staleTokens.length > 0) {
+      await admin.firestore()
+        .collection("user_devices").doc(uid).update({
+          fcmTokens: admin.firestore.FieldValue.arrayRemove(...staleTokens),
+        });
+    }
+  } catch (err) {
+    console.warn("sendSyncNotification error (non-fatal):", err && err.message);
   }
 }
 
