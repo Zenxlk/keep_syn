@@ -147,6 +147,46 @@ El engine evita duplicados en dos niveles:
 }
 ```
 
+## Debugging y logs
+
+### Firebase Console (interfaz web)
+
+1. **Functions logs** — `https://console.firebase.google.com` → Functions → Logs  
+   Muestra todo el `console.log/error` del worker y los errores no capturados.
+
+2. **Firestore — estado del job** — coleccion `sync_jobs/{jobId}`  
+   Campos clave a revisar: `state`, `errors`, `failed_tracks`, `providerStatus`, `abortReason`.
+
+3. **Firestore — eventos del job** — coleccion `sync_job_events` filtrado por `jobId`  
+   Eventos en orden: `SYNC_BATCH_PROCESSED`, `SYNC_JOB_COMPLETED`, `SYNC_JOB_FAILED`, `SYNC_JOB_ABORTED_QUOTA`, `SYNC_RATE_LIMIT_RETRY`.
+
+4. **Firestore — errores de app** — coleccion `app_logs`  
+   Errores severos del sync engine con stack trace, feature, tag y metadata del job.
+
+### CLI (desde terminal)
+
+```bash
+# Logs en tiempo real de todas las functions
+firebase functions:log
+
+# Solo el worker de sync
+firebase functions:log --only syncJobWorker
+
+# Filtrar por nivel
+firebase functions:log --only syncJobWorker 2>&1 | grep ERROR
+```
+
+### Variables de entorno que afectan el sync
+
+| Variable | Efecto |
+|---|---|
+| `USE_REAL_SYNC_API=true` | Usa `FirestoreSyncService` (llama al backend real) |
+| `USE_REAL_SYNC_API=false` | Usa `MockSyncService` (simula sin llamar al backend) |
+| `SYNC_YOUTUBE_DAILY_QUOTA_BUDGET` | Presupuesto estimado de quota diaria (default: 3000) |
+| `SYNC_YOUTUBE_MIN_QUOTA_BUFFER` | Buffer minimo antes de abortar por quota (default: 100) |
+
+> **Importante**: Con `USE_REAL_SYNC_API=false` el sync parece funcionar (detecta canciones y cantidad) pero no crea nada en YouTube Music porque todo es simulado.
+
 ## Notas de integracion
 
 - El source adapter real implementado hoy es Spotify.
