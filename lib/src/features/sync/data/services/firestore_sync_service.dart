@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:keepsyn_app/src/core/error/exceptions.dart';
 import 'package:keepsyn_app/src/features/sync/data/services/sync_service.dart';
 import 'package:keepsyn_app/src/features/sync/domain/entities/playlist.dart';
+import 'package:keepsyn_app/src/features/sync/domain/entities/review_item.dart';
 import 'package:keepsyn_app/src/features/sync/domain/entities/sync_job.dart';
 import 'package:keepsyn_app/src/features/sync/domain/entities/sync_progress.dart';
 import 'package:keepsyn_app/src/features/sync/domain/entities/sync_result.dart';
@@ -100,6 +101,92 @@ class FirestoreSyncService implements ISyncService {
     );
   }
 
+  @override
+  Future<List<ReviewPendingItem>> getReviewItems({required String jobId}) async {
+    final response =
+        await _dio.get<Map<String, dynamic>>('/v1/sync/jobs/$jobId');
+    final data = response.data;
+    if (data == null || data['status'] != 'OK') {
+      throw ServerException(
+        data?['message']?.toString() ?? 'Error consultando job.',
+      );
+    }
+    final jobData =
+        (data['data'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    final raw = jobData['review_pending'];
+    if (raw is! List) return const [];
+    return raw.whereType<Map>().map(_parseReviewItem).whereType<ReviewPendingItem>().toList();
+  }
+
+  @override
+  Future<void> submitReview({
+    required String jobId,
+    required List<ReviewDecision> decisions,
+  }) async {
+    final body = <String, dynamic>{
+      'decisions': decisions
+          .map((d) => <String, dynamic>{
+                'sourceTrackId': d.sourceTrackId,
+                'action': d.approve ? 'approve' : 'skip',
+                if (d.videoId != null) 'videoId': d.videoId,
+              })
+          .toList(growable: false),
+    };
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/v1/sync/jobs/$jobId/review',
+      data: body,
+    );
+    final data = response.data;
+    if (data != null && data['status'] != 'OK') {
+      throw ServerException(
+        data['message']?.toString() ?? 'Error enviando revisión.',
+      );
+    }
+  }
+
+  ReviewPendingItem? _parseReviewItem(Map raw) {
+    try {
+      final src = raw['sourceTrack'] as Map? ?? {};
+      final sourceTrack = ReviewTrack(
+        id: src['id']?.toString() ?? '',
+        title: src['title']?.toString() ?? '',
+        artists: _parseStringList(src['artists']),
+        album: src['album']?.toString(),
+      );
+
+      final options = (raw['options'] is List ? raw['options'] as List : [])
+          .whereType<Map>()
+          .map((o) {
+            final t = o['track'] as Map? ?? {};
+            return ReviewOption(
+              confidence: (o['confidence'] as num?)?.toDouble() ?? 0,
+              strategy: o['strategy']?.toString() ?? '',
+              track: ReviewTrack(
+                id: t['id']?.toString() ?? '',
+                title: t['title']?.toString() ?? '',
+                artists: _parseStringList(t['artists']),
+              ),
+            );
+          })
+          .toList(growable: false);
+
+      return ReviewPendingItem(
+        sourceTrack: sourceTrack,
+        confidence: (raw['confidence'] as num?)?.toDouble() ?? 0,
+        strategy: raw['strategy']?.toString() ?? '',
+        options: options,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  List<String> _parseStringList(Object? raw) {
+    if (raw is List) return raw.map((e) => e.toString()).toList();
+    if (raw is String) return [raw];
+    return const [];
+  }
+
   Future<SyncResult> _pollJob({
     required String backendJobId,
     required String localJobId,
@@ -149,6 +236,7 @@ class FirestoreSyncService implements ISyncService {
           state: state,
           counters: counters,
           rawErrors: jobData['errors'],
+          rawReviewPending: jobData['review_pending'],
         );
       }
     }
@@ -226,6 +314,7 @@ class FirestoreSyncService implements ISyncService {
     required String state,
     required Map<String, int> counters,
     required Object? rawErrors,
+    Object? rawReviewPending,
   }) {
     final status = switch (state) {
       'success' => SyncResultStatus.success,
@@ -233,6 +322,9 @@ class FirestoreSyncService implements ISyncService {
       'cancelled' => SyncResultStatus.cancelled,
       _ => SyncResultStatus.failed,
     };
+
+    final reviewPendingCount =
+        rawReviewPending is List ? rawReviewPending.length : 0;
 
     return SyncResult(
       jobId: jobId,
@@ -242,6 +334,7 @@ class FirestoreSyncService implements ISyncService {
       updated: counters['updated'] ?? 0,
       skipped: counters['skipped'] ?? 0,
       failed: counters['failed'] ?? 0,
+      reviewPendingCount: reviewPendingCount,
       errors: _parseErrors(rawErrors),
       completedAt: DateTime.now(),
     );

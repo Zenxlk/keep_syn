@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:keepsyn_app/src/core/router/app_router.dart';
 import 'package:keepsyn_app/src/features/sync/presentation/riverpod/sync_controller_state.dart';
 import 'package:keepsyn_app/src/features/sync/presentation/riverpod/sync_providers.dart';
 
@@ -72,6 +73,11 @@ class SyncScreen extends ConsumerWidget {
                     Text('Creados: ${state.result!.created}'),
                     Text('Omitidos: ${state.result!.skipped}'),
                     Text('Fallidos: ${state.result!.failed}'),
+                    if (state.result!.reviewPendingCount > 0)
+                      Text(
+                        'En revisión: ${state.result!.reviewPendingCount}',
+                        style: const TextStyle(color: Colors.orange),
+                      ),
                   ],
                 ),
               ),
@@ -126,6 +132,19 @@ class SyncScreen extends ConsumerWidget {
               icon: const Icon(Icons.stop_circle_outlined),
               label: const Text('Cancelar sincronizacion'),
             ),
+          if ((state.isFinished || (state.isIdle && state.result != null)) &&
+              (state.result?.reviewPendingCount ?? 0) > 0) ...[
+            OutlinedButton.icon(
+              onPressed: () => context.push(
+                '${AppRoutes.review}?jobId=${state.result!.jobId}',
+              ),
+              icon: const Icon(Icons.rate_review_outlined),
+              label: Text(
+                'Revisar ${state.result!.reviewPendingCount} track(s)',
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           if (state.isFinished || (state.isIdle && state.result != null))
             FilledButton.icon(
               onPressed: () {

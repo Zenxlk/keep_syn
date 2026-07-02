@@ -9,6 +9,7 @@ import 'package:keepsyn_app/src/features/auth/presentation/screens/splash_screen
 import 'package:keepsyn_app/src/features/integrations/presentation/screens/spotify_integration_screen.dart';
 import 'package:keepsyn_app/src/features/integrations/presentation/screens/spotify_playlists_screen.dart';
 import 'package:keepsyn_app/src/features/integrations/presentation/screens/youtube_integration_screen.dart';
+import 'package:keepsyn_app/src/features/sync/presentation/screens/review_screen.dart';
 import 'package:keepsyn_app/src/features/sync/presentation/screens/sync_screen.dart';
 
 abstract class AppRoutes {
@@ -19,6 +20,7 @@ abstract class AppRoutes {
   static const spotifyPlaylists = '/integrations/spotify/playlists';
   static const youtubeIntegration = '/integrations/youtube';
   static const sync = '/sync';
+  static const review = '/sync/review';
 }
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -58,6 +60,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.sync,
         builder: (context, state) => const SyncScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.review,
+        builder: (context, state) {
+          final jobId = state.uri.queryParameters['jobId'] ?? '';
+          return ReviewScreen(jobId: jobId);
+        },
       ),
     ],
     redirect: (context, state) {

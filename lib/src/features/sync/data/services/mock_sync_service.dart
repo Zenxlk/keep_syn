@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:keepsyn_app/src/features/sync/data/services/sync_service.dart';
 import 'package:keepsyn_app/src/features/sync/domain/entities/playlist.dart';
+import 'package:keepsyn_app/src/features/sync/domain/entities/review_item.dart';
 import 'package:keepsyn_app/src/features/sync/domain/entities/sync_job.dart';
 import 'package:keepsyn_app/src/features/sync/domain/entities/sync_progress.dart';
 import 'package:keepsyn_app/src/features/sync/domain/entities/sync_result.dart';
@@ -11,6 +12,16 @@ class MockSyncService implements ISyncService {
 
   @override
   Future<SyncJobStatus?> getLastJobStatus() async => null;
+
+  @override
+  Future<List<ReviewPendingItem>> getReviewItems({required String jobId}) async =>
+      const [];
+
+  @override
+  Future<void> submitReview({
+    required String jobId,
+    required List<ReviewDecision> decisions,
+  }) async {}
 
   @override
   Future<SyncResult> reconnectToJob({

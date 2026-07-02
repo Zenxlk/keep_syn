@@ -4,6 +4,8 @@ const {
   buildInitialJobData,
   enqueueSyncJob,
 } = require('./syncEngine');
+const { getValidYouTubeAccessToken } = require('../integrations/youtube/youtubeTokenService');
+const { addTrackToPlaylist } = require('../integrations/youtube/youtubeClient');
 
 const db = admin.firestore();
 
@@ -328,6 +330,106 @@ exports.cancelJob = async (req, res) => {
     return res.ok('Job cancelado exitosamente.', { jobId, state: 'cancelled' });
   } catch (error) {
     return res.error('Error al cancelar el job.', 500);
+  }
+};
+
+exports.submitReview = async (req, res) => {
+  const { jobId } = req.params;
+  const uid = req.user.uid;
+  const { decisions } = req.body;
+
+  if (!Array.isArray(decisions) || decisions.length === 0) {
+    return res.error('Se requiere un array de decisiones no vacío.', 400);
+  }
+
+  try {
+    const docRef = db.collection('sync_jobs').doc(jobId);
+    const doc = await docRef.get();
+
+    if (!doc.exists || doc.data().uid !== uid) {
+      return res.error('Job no encontrado o sin permisos.', 404);
+    }
+
+    const jobData = doc.data();
+    const playlistId = jobData.destination && jobData.destination.playlistId;
+    if (!playlistId) {
+      return res.error('El job no tiene playlist de destino configurada.', 400);
+    }
+
+    const pendingItems = Array.isArray(jobData.review_pending) ? jobData.review_pending : [];
+    const pendingById = new Map(
+      pendingItems.map((item) => [item.sourceTrack && item.sourceTrack.id, item]),
+    );
+
+    const accessToken = await getValidYouTubeAccessToken(uid);
+
+    const results = [];
+    let approvedCount = 0;
+    let skippedCount = 0;
+    const processedSourceIds = new Set();
+
+    for (const decision of decisions) {
+      const { sourceTrackId, action, videoId } = decision;
+      if (!sourceTrackId || !action) {
+        results.push({ sourceTrackId, status: 'error', reason: 'Campos requeridos ausentes.' });
+        continue;
+      }
+
+      if (!pendingById.has(sourceTrackId)) {
+        results.push({ sourceTrackId, status: 'error', reason: 'Track no encontrado en review_pending.' });
+        continue;
+      }
+
+      if (action === 'approve') {
+        if (!videoId) {
+          results.push({ sourceTrackId, status: 'error', reason: 'videoId requerido para aprobar.' });
+          continue;
+        }
+        try {
+          await addTrackToPlaylist({ accessToken, playlistId, track: { id: videoId } });
+          approvedCount++;
+          processedSourceIds.add(sourceTrackId);
+          results.push({ sourceTrackId, status: 'approved', videoId });
+        } catch (addError) {
+          results.push({ sourceTrackId, status: 'error', reason: addError.message });
+        }
+      } else if (action === 'skip') {
+        skippedCount++;
+        processedSourceIds.add(sourceTrackId);
+        results.push({ sourceTrackId, status: 'skipped' });
+      } else {
+        results.push({ sourceTrackId, status: 'error', reason: `Acción desconocida: ${action}` });
+      }
+    }
+
+    // Remove processed items from review_pending
+    const remainingPending = pendingItems.filter(
+      (item) => !processedSourceIds.has(item.sourceTrack && item.sourceTrack.id),
+    );
+
+    const updatePayload = {
+      review_pending: remainingPending,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    if (approvedCount > 0) {
+      updatePayload['counters.created'] = admin.firestore.FieldValue.increment(approvedCount);
+    }
+    if (skippedCount > 0) {
+      updatePayload['counters.skipped'] = admin.firestore.FieldValue.increment(skippedCount);
+    }
+
+    await docRef.update(updatePayload);
+
+    return res.ok('Revisión procesada.', {
+      jobId,
+      results,
+      approvedCount,
+      skippedCount,
+      remainingReviewCount: remainingPending.length,
+    });
+  } catch (error) {
+    console.error('Error procesando revisión:', { uid, jobId, message: error.message, stack: error.stack });
+    return res.error('Error al procesar la revisión.', 500);
   }
 };
 
