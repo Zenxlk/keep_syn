@@ -7,6 +7,7 @@ import 'package:keepsyn_app/src/features/auth/presentation/riverpod/auth_provide
 import 'package:keepsyn_app/src/features/integrations/data/enums/integration_status.dart';
 import 'package:keepsyn_app/src/features/integrations/presentation/riverpod/spotify_integration_provider.dart';
 import 'package:keepsyn_app/src/features/integrations/presentation/riverpod/youtube_integration_provider.dart';
+import 'package:keepsyn_app/src/features/sync/data/local/sync_local_store.dart';
 import 'package:keepsyn_app/src/features/sync/presentation/riverpod/sync_controller_state.dart';
 import 'package:keepsyn_app/src/features/sync/presentation/riverpod/sync_providers.dart';
 
@@ -18,6 +19,7 @@ class HomeScreen extends ConsumerWidget {
     final spotifyStatus = ref.watch(spotifyStatusProvider);
     final youtubeStatus = ref.watch(youtubeStatusProvider);
     final syncState = ref.watch(syncControllerProvider);
+    final historyAsync = ref.watch(syncHistoryProvider);
 
     final spotifyOk =
         spotifyStatus.value == IntegrationStatus.connected;
@@ -97,6 +99,29 @@ class HomeScreen extends ConsumerWidget {
             const SizedBox(height: 8),
             _LastSyncCard(syncState: syncState),
           ],
+
+          historyAsync.when(
+            loading: () => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
+            data: (history) {
+              if (history.isEmpty) return const SizedBox.shrink();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 28),
+                  Text(
+                    'HISTORIAL',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                          letterSpacing: 1.2,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  ...history.take(5).map((e) => _HistoryTile(entry: e)),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );
@@ -406,5 +431,88 @@ class _Stat extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// History tile
+// ---------------------------------------------------------------------------
+
+class _HistoryTile extends StatelessWidget {
+  const _HistoryTile({required this.entry});
+  final SyncHistoryEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _statusColor(entry.status);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            Icon(_statusIcon(entry.status), size: 18, color: color),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.playlistName ?? 'Sync reconectado',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    '${entry.created} agregadas · ${entry.skipped} omitidas · ${entry.failed} fallidas',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _formatDate(entry.completedAt),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _statusIcon(SyncStatus s) => switch (s) {
+        SyncStatus.idle => Icons.check_circle_outline_rounded,
+        SyncStatus.partialSuccess => Icons.warning_amber_rounded,
+        SyncStatus.failed => Icons.error_outline_rounded,
+        SyncStatus.cancelled => Icons.cancel_outlined,
+        _ => Icons.check_circle_outline_rounded,
+      };
+
+  Color _statusColor(SyncStatus s) => switch (s) {
+        SyncStatus.idle => Colors.green,
+        SyncStatus.partialSuccess => Colors.orange,
+        SyncStatus.failed => Colors.red,
+        SyncStatus.cancelled => Colors.grey,
+        _ => Colors.green,
+      };
+
+  String _formatDate(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'Ahora';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min';
+    if (diff.inHours < 24) return '${diff.inHours} h';
+    if (diff.inDays == 1) return 'Ayer';
+    if (diff.inDays < 7) return '${diff.inDays} días';
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    return '${dt.year}-$m-$d';
   }
 }
