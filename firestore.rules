@@ -2,57 +2,55 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ----------------------------------------------------------------------
-    // 1. USUARIOS (Tu regla original)
-    // Cada usuario solo puede leer y modificar su propio perfil.
-    // ----------------------------------------------------------------------
+    // 1. USUARIOS
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // ----------------------------------------------------------------------
-    // 2. SEGURIDAD DE ACCESO (Allowlist)
-    // Nadie desde la app puede leer o escribir aquí. Solo las Cloud Functions
-    // (que usan Firebase Admin SDK y se saltan estas reglas) tienen acceso.
-    // ----------------------------------------------------------------------
+    // 2. ALLOWLIST — solo backend (Admin SDK bypasses rules)
     match /allowlist/{document=**} {
       allow read, write: if false;
     }
 
-    // ----------------------------------------------------------------------
-    // 3. LOGS DE ERRORES (App Logs)
-    // Como creamos la Cloud Function 'logClientError', la app ya no necesita
-    // escribir directamente en la base de datos. Todo está blindado.
-    // ----------------------------------------------------------------------
+    // 3. LOGS DE ERRORES — solo backend
     match /app_logs/{document=**} {
       allow read, write: if false;
     }
 
-    // ----------------------------------------------------------------------
-    // 4. MOTOR DE SINCRONIZACIÓN (Sync Jobs & Events)
-    // La app (Flutter) solo necesita LEER (para mostrar la barrita de progreso).
-    // La escritura la hace exclusivamente la API del backend.
-    // ----------------------------------------------------------------------
+    // 4. SYNC JOBS
+    // resource == null cubre el instante de race condition en que el doc aún
+    // no propagó al cliente tras ser escrito por el backend.
     match /sync_jobs/{jobId} {
-      // Solo permite leer si estás logueado y el 'uid' del documento coincide con el tuyo
-      allow read: if request.auth != null && request.auth.uid == resource.data.uid;
+      allow read: if request.auth != null
+        && (resource == null || request.auth.uid == resource.data.uid);
       allow write: if false;
     }
 
     match /sync_job_events/{eventId} {
-      allow read: if request.auth != null && request.auth.uid == resource.data.uid;
+      allow read: if request.auth != null
+        && (resource == null || request.auth.uid == resource.data.uid);
       allow write: if false;
     }
 
-    // Las credenciales OAuth reales. Bloqueado al 100% para clientes.
+    // 5. SECRETS DE INTEGRACIÓN — solo backend
     match /integration_secrets/{document=**} {
       allow read, write: if false;
     }
 
-    // El estado visible para pintar la UI (conectado, desconectado)
+    // 6. ESTADO DE INTEGRACIONES — solo lectura del propio usuario
     match /user_integrations/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow write: if false; // Solo el backend actualiza esto tras negociar tokens
+      allow write: if false;
+    }
+
+    // 7. CACHE DE BÚSQUEDA — solo backend
+    match /track_search_cache/{document=**} {
+      allow read, write: if false;
+    }
+
+    // 8. QUOTA CONTROLS — solo backend
+    match /sync_quota_controls/{document=**} {
+      allow read, write: if false;
     }
 
   }
