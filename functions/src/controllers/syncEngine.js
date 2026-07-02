@@ -27,7 +27,7 @@ const DEFAULT_FUNCTION_REGION = "us-central1";
 const TASK_DISPATCH_DEADLINE_SECONDS = 540;
 const MAX_RATE_LIMIT_RETRIES = 5;
 const BASE_BACKOFF_MS = 750;
-const DEFAULT_DAILY_ESTIMATED_QUOTA_BUDGET = 3000;
+const DEFAULT_DAILY_ESTIMATED_QUOTA_BUDGET = 9000;
 const DEFAULT_MIN_QUOTA_BUFFER = 100;
 const YOUTUBE_QUOTA_COSTS = {
   listPlaylists: 1,
@@ -207,13 +207,15 @@ function normalizeTrackForIndex(track = {}) {
 }
 
 /**
- * @param {Array<Object>} tracks
+ * @param {string[]} initialIds
+ * @param {string[]} initialIsrcs
+ * @param {string[]} initialSigs
  * @return {Object}
  */
-function createDestinationIndex(tracks = []) {
-  const ids = new Set();
-  const signatures = new Set();
-  const isrcs = new Set();
+function _buildIndex(initialIds = [], initialIsrcs = [], initialSigs = []) {
+  const ids = new Set(initialIds);
+  const isrcs = new Set(initialIsrcs);
+  const signatures = new Set(initialSigs);
 
   const addTrack = (track) => {
     const normalized = normalizeTrackForIndex(track);
@@ -222,8 +224,6 @@ function createDestinationIndex(tracks = []) {
     const signature = createTrackSignature(normalized);
     if (signature) signatures.add(signature);
   };
-
-  tracks.forEach(addTrack);
 
   return {
     addTrack,
@@ -234,7 +234,37 @@ function createDestinationIndex(tracks = []) {
         (normalized.isrc && isrcs.has(normalized.isrc)) ||
         (signature && signatures.has(signature));
     },
+    toSnapshot() {
+      return {ids: [...ids], isrcs: [...isrcs], sigs: [...signatures]};
+    },
   };
+}
+
+/**
+ * @param {Array<Object>} tracks
+ * @return {Object}
+ */
+function createDestinationIndex(tracks = []) {
+  const index = _buildIndex();
+  tracks.forEach(index.addTrack);
+  return index;
+}
+
+/**
+ * Rebuilds a destination index from a stored Firestore snapshot, avoiding
+ * a redundant listPlaylistTracks API call on subsequent sync chunks.
+ * @param {Object} snapshot
+ * @param {string[]} snapshot.ids
+ * @param {string[]} snapshot.isrcs
+ * @param {string[]} snapshot.sigs
+ * @return {Object}
+ */
+function rebuildDestinationIndex(snapshot = {}) {
+  return _buildIndex(
+      Array.isArray(snapshot.ids) ? snapshot.ids : [],
+      Array.isArray(snapshot.isrcs) ? snapshot.isrcs : [],
+      Array.isArray(snapshot.sigs) ? snapshot.sigs : [],
+  );
 }
 
 /**
@@ -711,7 +741,8 @@ async function ensureTargetPlaylist(jobRef, jobData, sourceSnapshot, targetAdapt
   });
 
   const found = Array.isArray(existingPlaylists) ? existingPlaylists.find((playlist) => {
-    return String(playlist.name || "").trim().toLowerCase() ===
+    const playlistName = playlist.snippet?.title || playlist.name || "";
+    return String(playlistName).trim().toLowerCase() ===
       String(desiredName).trim().toLowerCase();
   }) : null;
 
@@ -962,28 +993,44 @@ async function processSyncJobTask({jobId, uid}) {
       platform: jobData.sourcePlatform,
     });
 
-    await consumeEstimatedYouTubeQuota({
-      uid,
-      jobId,
-      units: YOUTUBE_QUOTA_COSTS.listPlaylistTracks,
-      operation: "list_target_playlist_tracks",
-    });
+    let destinationIndex;
+    const storedSnapshot = jobData.destinationIndex || null;
 
-    const existingDestinationTracks = await withRateLimitRetry(() =>
-      targetAdapter.listPlaylistTracks({
+    if (storedSnapshot && Array.isArray(storedSnapshot.ids)) {
+      // Chunks after the first: rebuild from Firestore snapshot (0 quota cost).
+      destinationIndex = rebuildDestinationIndex(storedSnapshot);
+    } else {
+      // First chunk: fetch existing tracks and save the snapshot for future chunks.
+      await consumeEstimatedYouTubeQuota({
         uid,
-        playlistId: destination.playlistId,
-      }), {
-      jobId,
-      uid,
-      operation: "list_target_playlist_tracks",
-      platform: jobData.targetPlatform,
-    });
+        jobId,
+        units: YOUTUBE_QUOTA_COSTS.listPlaylistTracks,
+        operation: "list_target_playlist_tracks",
+      });
 
-    const destinationIndex = createDestinationIndex(existingDestinationTracks);
+      const existingDestinationTracks = await withRateLimitRetry(() =>
+        targetAdapter.listPlaylistTracks({
+          uid,
+          playlistId: destination.playlistId,
+        }), {
+        jobId,
+        uid,
+        operation: "list_target_playlist_tracks",
+        platform: jobData.targetPlatform,
+      });
+
+      destinationIndex = createDestinationIndex(existingDestinationTracks);
+
+      await jobRef.set({
+        destinationIndex: destinationIndex.toSnapshot(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+    }
+
     const reviewPending = [];
     const failedTracks = [];
     const errors = [];
+    const addedTracks = [];
     let quotaAbortContext = null;
     const countersDelta = {
       processed: 0,
@@ -1062,6 +1109,7 @@ async function processSyncJobTask({jobId, uid}) {
           });
 
           destinationIndex.addTrack(matchResult.matchedTrack);
+          addedTracks.push(matchResult.matchedTrack);
           countersDelta.processed += 1;
           countersDelta.created += 1;
           continue;
@@ -1142,6 +1190,28 @@ async function processSyncJobTask({jobId, uid}) {
           };
           break;
         }
+      }
+    }
+
+    if (addedTracks.length > 0) {
+      const newEntries = rebuildDestinationIndex({});
+      addedTracks.forEach((t) => newEntries.addTrack(t));
+      const diff = newEntries.toSnapshot();
+      const indexUpdate = {};
+      if (diff.ids.length) {
+        indexUpdate["destinationIndex.ids"] =
+          admin.firestore.FieldValue.arrayUnion(...diff.ids);
+      }
+      if (diff.isrcs.length) {
+        indexUpdate["destinationIndex.isrcs"] =
+          admin.firestore.FieldValue.arrayUnion(...diff.isrcs);
+      }
+      if (diff.sigs.length) {
+        indexUpdate["destinationIndex.sigs"] =
+          admin.firestore.FieldValue.arrayUnion(...diff.sigs);
+      }
+      if (Object.keys(indexUpdate).length) {
+        await jobRef.update(indexUpdate);
       }
     }
 
