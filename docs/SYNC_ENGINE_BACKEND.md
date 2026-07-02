@@ -182,15 +182,38 @@ firebase functions:log --only syncJobWorker 2>&1 | grep ERROR
 |---|---|
 | `USE_REAL_SYNC_API=true` | Usa `FirestoreSyncService` (llama al backend real) |
 | `USE_REAL_SYNC_API=false` | Usa `MockSyncService` (simula sin llamar al backend) |
-| `SYNC_YOUTUBE_DAILY_QUOTA_BUDGET` | Presupuesto estimado de quota diaria (default: 3000) |
+| `SYNC_YOUTUBE_DAILY_QUOTA_BUDGET` | Presupuesto estimado de quota diaria (default: 9000) |
 | `SYNC_YOUTUBE_MIN_QUOTA_BUFFER` | Buffer minimo antes de abortar por quota (default: 100) |
 
 > **Importante**: Con `USE_REAL_SYNC_API=false` el sync parece funcionar (detecta canciones y cantidad) pero no crea nada en YouTube Music porque todo es simulado.
 
+## Indice de destino en Firestore
+
+Para playlists grandes que se sincronizan en varios chunks, el engine evita llamar a `listPlaylistTracks` en cada chunk.
+
+**Primer chunk:**
+1. Llama a `listPlaylistTracks` para obtener los tracks ya en la playlist destino.
+2. Construye un indice en memoria (`ids`, `isrcs`, `sigs`).
+3. Guarda un snapshot del indice en `sync_jobs/{jobId}.destinationIndex`.
+
+**Chunks siguientes:**
+- Lee `destinationIndex` de Firestore y reconstruye el indice sin ninguna llamada a la API (`0` quota).
+- A medida que agrega tracks nuevos, actualiza el snapshot con `arrayUnion` para mantenerlo al dia.
+
+Este mecanismo reduce el consumo de quota proporcional al numero de chunks.
+
+## Cliente Flutter — polling y resiliencia
+
+El cliente (`FirestoreSyncService`) sondea el estado del job via `GET /v1/sync/jobs/{jobId}` cada 3 segundos (configurable con `pollInterval`).
+
+**Timeout de polling:** si el job no llega a un estado terminal en 20 minutos (configurable con `maxPollDuration`), el servicio lanza un error para liberar la sesion.
+
+**Reconexion automatica al arrancar:** al inicializar `SyncController`, se consulta `GET /v1/sync/jobs/last`. Si hay un job activo (estado `preparing` o `running`) que la sesion actual no inicio, el controlador reconecta transparentemente, muestra el progreso en vivo y permite cancelar. Esto cubre el caso en que la app fue cerrada en medio de una sincronizacion.
+
 ## Notas de integracion
 
-- El source adapter real implementado hoy es Spotify.
-- El target adapter real implementado hoy es **YouTube Data API** (`youtube`).
+- El source adapter implementado es Spotify (`functions/src/integrations/spotify/`).
+- El target adapter implementado usa **ytmusic-api** (sin quota) para busquedas, y la YouTube Data API v3 para gestionar playlists y agregar tracks.
 - Contrato soportado por el engine: `listPlaylists`, `createPlaylist`, `listPlaylistTracks`, `searchTracks`, `addTrackToPlaylist`.
-- Si en el futuro migras a **YouTube Music nativo**, convendra crear otro adapter especifico con el mismo contrato y registrarlo en `syncEngine`.
+- Si en el futuro migras a **YouTube Music nativo**, crea otro adapter con el mismo contrato y registralo en `syncEngine`.
 
