@@ -30,7 +30,9 @@ class SpotifyPlaylistModel extends Equatable {
     return SpotifyPlaylistModel(
       id: json['id']?.toString() ?? 'unknown-playlist',
       name: json['name']?.toString() ?? 'Playlist sin nombre',
-      imageUrl: images.isNotEmpty ? images.first['url']?.toString() : null,
+      imageUrl: images.isNotEmpty
+          ? images.first['url']?.toString()
+          : json['imageUrl']?.toString(),
       ownerName: owner['display_name']?.toString(),
       tracksTotal:
           tracks['total'] is num ? (tracks['total'] as num).toInt() : 0,
