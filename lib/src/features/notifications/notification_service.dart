@@ -60,11 +60,15 @@ class NotificationService {
     _foregroundSub?.cancel();
     _tokenRefreshSub?.cancel();
     if (!fcmSupported) return;
-    final token = await _fcm.getToken();
-    if (token != null) {
-      await _db.collection('user_devices').doc(uid).update({
-        'fcmTokens': FieldValue.arrayRemove([token]),
-      });
+    try {
+      final token = await _fcm.getToken();
+      if (token != null) {
+        await _db.collection('user_devices').doc(uid).set({
+          'fcmTokens': FieldValue.arrayRemove([token]),
+        }, SetOptions(merge: true));
+      }
+    } catch (e) {
+      debugPrint('[NotificationService] FCM dispose failed (non-critical): $e');
     }
   }
 
