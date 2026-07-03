@@ -23,9 +23,18 @@ class SpotifyPlaylistModel extends Equatable {
     final owner = Map<String, dynamic>.from(
       (json['owner'] as Map?) ?? <String, dynamic>{},
     );
-    final tracks = Map<String, dynamic>.from(
-      (json['tracks'] as Map?) ?? <String, dynamic>{},
-    );
+
+    // Backend sends tracksTotal as a top-level field; fall back to nested
+    // tracks.total for raw Spotify API responses (e.g. tests / stubs).
+    final int tracksTotal;
+    if (json['tracksTotal'] is num) {
+      tracksTotal = (json['tracksTotal'] as num).toInt();
+    } else {
+      final tracks = Map<String, dynamic>.from(
+        (json['tracks'] as Map?) ?? <String, dynamic>{},
+      );
+      tracksTotal = tracks['total'] is num ? (tracks['total'] as num).toInt() : 0;
+    }
 
     return SpotifyPlaylistModel(
       id: json['id']?.toString() ?? 'unknown-playlist',
@@ -34,8 +43,7 @@ class SpotifyPlaylistModel extends Equatable {
           ? images.first['url']?.toString()
           : json['imageUrl']?.toString(),
       ownerName: owner['display_name']?.toString(),
-      tracksTotal:
-          tracks['total'] is num ? (tracks['total'] as num).toInt() : 0,
+      tracksTotal: tracksTotal,
     );
   }
 

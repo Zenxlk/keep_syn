@@ -22,6 +22,7 @@ class _SpotifyPlaylistsScreenState extends ConsumerState<SpotifyPlaylistsScreen>
   final _searchController = TextEditingController();
   Timer? _debounce;
   String _query = '';
+  String? _loadingPlaylistId;
 
   @override
   void dispose() {
@@ -130,7 +131,9 @@ class _SpotifyPlaylistsScreenState extends ConsumerState<SpotifyPlaylistsScreen>
                     final playlist = filtered[index];
                     return _PlaylistCard(
                       playlist: playlist,
-                      isSyncing: !syncState.canStartNewSync,
+                      isSyncing: !syncState.canStartNewSync ||
+                          _loadingPlaylistId != null,
+                      isLoading: _loadingPlaylistId == playlist.id,
                       onSync: () => _startSync(context, ref, playlist),
                     );
                   },
@@ -183,6 +186,9 @@ class _SpotifyPlaylistsScreenState extends ConsumerState<SpotifyPlaylistsScreen>
     WidgetRef ref,
     SpotifyPlaylistModel playlist,
   ) async {
+    if (_loadingPlaylistId != null) return;
+    setState(() => _loadingPlaylistId = playlist.id);
+
     try {
       final tracks = await ref.read(
         spotifyPlaylistTracksProvider(playlist.id).future,
@@ -198,9 +204,8 @@ class _SpotifyPlaylistsScreenState extends ConsumerState<SpotifyPlaylistsScreen>
         requestedAt: DateTime.now(),
       );
 
-      if (context.mounted) {
-        context.push(AppRoutes.sync);
-      }
+      if (!context.mounted) return;
+      context.push(AppRoutes.sync);
 
       await ref.read(syncControllerProvider.notifier).startSync(
             job: job,
@@ -208,22 +213,44 @@ class _SpotifyPlaylistsScreenState extends ConsumerState<SpotifyPlaylistsScreen>
           );
     } catch (e) {
       if (context.mounted) {
+        final msg = _friendlyError(e.toString());
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo iniciar sync: $e')),
+          SnackBar(
+            content: Text(msg),
+            duration: const Duration(seconds: 8),
+          ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _loadingPlaylistId = null);
     }
+  }
+
+  String _friendlyError(String raw) {
+    if (raw.contains('403') ||
+        raw.toLowerCase().contains('permisos') ||
+        raw.toLowerCase().contains('permiso')) {
+      return 'Spotify no permite leer esta playlist. '
+          'Ve a Integraciones → Spotify, desvincula y vuelve a conectar.';
+    }
+    if (raw.contains('401') || raw.toLowerCase().contains('expiró')) {
+      return 'Sesión de Spotify expirada. '
+          'Ve a Integraciones → Spotify, desvincula y vuelve a conectar.';
+    }
+    return 'No se pudieron cargar los tracks: $raw';
   }
 }
 
 class _PlaylistCard extends StatelessWidget {
   final SpotifyPlaylistModel playlist;
   final bool isSyncing;
+  final bool isLoading;
   final VoidCallback onSync;
 
   const _PlaylistCard({
     required this.playlist,
     required this.isSyncing,
+    required this.isLoading,
     required this.onSync,
   });
 
@@ -256,7 +283,16 @@ class _PlaylistCard extends StatelessWidget {
             const SizedBox(width: 12),
             FilledButton(
               onPressed: isSyncing ? null : onSync,
-              child: const Text('Sincronizar'),
+              child: isLoading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Sincronizar'),
             ),
           ],
         ),
