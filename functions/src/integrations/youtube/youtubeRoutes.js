@@ -3,11 +3,8 @@ const {getStatus, linkAccount, unlinkAccount} = require("./youtubeController");
 
 const router = express.Router();
 
-const wrap = (fn) => (req, res, next) =>
-  Promise.resolve(fn(req, res, next)).catch(next);
-
-router.get("/status", wrap(getStatus));
-router.post("/link", wrap(linkAccount));
-router.post("/unlink", wrap(unlinkAccount));
+router.get("/status", getStatus);
+router.post("/link", linkAccount);
+router.post("/unlink", unlinkAccount);
 
 module.exports = router;
