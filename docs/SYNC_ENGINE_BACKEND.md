@@ -217,3 +217,26 @@ El cliente (`FirestoreSyncService`) sondea el estado del job via `GET /v1/sync/j
 - Contrato soportado por el engine: `listPlaylists`, `createPlaylist`, `listPlaylistTracks`, `searchTracks`, `addTrackToPlaylist`.
 - Si en el futuro migras a **YouTube Music nativo**, crea otro adapter con el mismo contrato y registralo en `syncEngine`.
 
+## Migracion de la Spotify Web API (febrero 2026)
+
+En febrero 2026, Spotify elimino varios endpoints y renombro campos en sus respuestas. Cambios relevantes para KeepSyn:
+
+| Antes | Despues |
+|---|---|
+| `GET /v1/playlists/{id}/tracks` | `GET /v1/playlists/{id}/items` |
+| `response.item.track` | `response.item.item` |
+| `playlist.tracks.total` | `playlist.items.total` |
+| `fields=tracks.total` | `fields=items.total` |
+
+El endpoint `/tracks` ahora devuelve `403 Forbidden` para **todas** las playlists (incluidas las propias del usuario) en apps con Development Mode. El endpoint correcto es `/items`.
+
+Referencia: [February 2026 Migration Guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide)
+
+## Restricciones de Spotify en Development Mode
+
+- **Playlists propias y colaborativas:** sincronizacion completa disponible.
+- **Playlists generadas por Spotify** (Daily Mix, Discover Weekly, On Repeat, Release Radar, etc.): `owner.id == "spotify"` — la API devuelve `403 Forbidden` para el endpoint `/items`. La app detecta este caso via el campo `ownerId` en el modelo de playlist y deshabilita el boton de sincronizacion antes de intentar la llamada.
+- **Playlists privadas de otros usuarios:** igualmente restringidas por la API de Spotify.
+
+Para que un usuario pueda usar la app en Development Mode, su cuenta de Spotify debe estar registrada en **Users and Access** del Spotify Developer Dashboard (limite: 25 usuarios). El flujo OAuth puede completarse para cualquier usuario, pero las llamadas a la API retornan `403` si la cuenta no esta en la lista.
+
