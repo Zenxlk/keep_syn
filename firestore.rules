@@ -53,5 +53,10 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // 9. FCM DEVICE TOKENS — el usuario escribe solo su propio documento
+    match /user_devices/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
   }
 }
