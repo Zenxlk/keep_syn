@@ -73,9 +73,10 @@ async function listPlaylists(req, res) {
     items: (data.items || []).map((p) => ({
       id: p.id,
       name: p.name,
-      tracksTotal: p.tracks ? p.tracks.total : 0,
+      tracksTotal: p.items ? p.items.total : 0,
       imageUrl: p.images && p.images[0] ? p.images[0].url : null,
       ownerName: p.owner ? p.owner.display_name : null,
+      ownerId: p.owner ? p.owner.id : null,
     })),
     total: data.total || 0,
     next: data.next || null,
@@ -104,10 +105,11 @@ async function listPlaylistTracks(req, res) {
   }
 
   const accessToken = await getValidSpotifyAccessToken(uid);
+  console.log("[getPlaylistTracks] uid:", uid, "playlist:", playlistId, "token_prefix:", accessToken.slice(0, 12));
   const data = await getPlaylistTracks({accessToken, playlistId, limit, offset});
 
   const tracks = (data.items || [])
-      .map((item) => item.track)
+      .map((item) => item.item)
       .filter(Boolean)
       .map((track) => ({
         id: track.id,

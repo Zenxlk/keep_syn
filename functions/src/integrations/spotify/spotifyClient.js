@@ -44,7 +44,7 @@ async function exchangeAuthCode({code, redirectUri, clientId, clientSecret}) {
 async function getPlaylist({accessToken, playlistId}) {
   const {data} = await axios.get(`${SPOTIFY_API}/playlists/${playlistId}`, {
     headers: _authHeaders(accessToken),
-    params: {fields: "id,name,description,images,tracks.total,owner.display_name"},
+    params: {fields: "id,name,description,images,items.total,owner.display_name"},
   });
   return data;
 }
@@ -59,7 +59,7 @@ async function getPlaylist({accessToken, playlistId}) {
  * @return {Promise<Object>} { items, total, next, offset, limit }
  */
 async function getPlaylistTracks({accessToken, playlistId, offset = 0, limit = 100}) {
-  const {data} = await axios.get(`${SPOTIFY_API}/playlists/${playlistId}/tracks`, {
+  const {data} = await axios.get(`${SPOTIFY_API}/playlists/${playlistId}/items`, {
     headers: _authHeaders(accessToken),
     params: {offset, limit},
   });

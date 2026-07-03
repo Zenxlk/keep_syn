@@ -23,11 +23,15 @@ router.use((err, req, res, next) => {
     const spotifyBody = err.response?.data;
     console.error("[SpotifyRouteError] status:", status, "body:", JSON.stringify(spotifyBody));
     if (status === 403) {
-      return res.error(
-          "Tu token de Spotify no tiene permisos para leer esta playlist. " +
-          "Desvincula y vuelve a conectar Spotify para renovar los permisos.",
-          403,
-      );
+      const spotifyMsg = spotifyBody?.error?.message ?? "";
+      const isScopeError = spotifyMsg.toLowerCase().includes("scope");
+      const userMsg = isScopeError
+        ? "Tu token de Spotify no tiene los permisos necesarios. " +
+          "Desvincula y vuelve a conectar Spotify para renovar los permisos."
+        : "Esta playlist no puede sincronizarse: Spotify no permite acceder a sus " +
+          "tracks por API. Puede ser una playlist privada de otro usuario o una " +
+          "playlist generada por Spotify (Daily Mix, On Repeat, etc.).";
+      return res.error(userMsg, 403);
     }
     if (status === 401) {
       return res.error(
