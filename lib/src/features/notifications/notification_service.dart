@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Top-level handler required by firebase_messaging for background messages.
 /// Must be a top-level function (not a method).
@@ -21,8 +23,13 @@ class NotificationService {
   StreamSubscription<RemoteMessage>? _foregroundSub;
   StreamSubscription<String>? _tokenRefreshSub;
 
+  static bool get fcmSupported =>
+      kIsWeb || Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+
   /// Call once after the user is authenticated.
   Future<void> initialize({required String uid}) async {
+    if (!fcmSupported) return;
+
     // Register background handler (safe to call multiple times).
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
@@ -54,6 +61,7 @@ class NotificationService {
   Future<void> dispose({required String uid}) async {
     _foregroundSub?.cancel();
     _tokenRefreshSub?.cancel();
+    if (!fcmSupported) return;
     final token = await _fcm.getToken();
     if (token != null) {
       await _db.collection('user_devices').doc(uid).update({

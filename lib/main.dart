@@ -16,8 +16,10 @@ Future<void> main() async {
   AppLogger.info('Inicializando Firebase...', tag: 'main');
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Register background message handler before any other FCM setup.
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  // Register background message handler only on platforms that support FCM.
+  if (NotificationService.fcmSupported) {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
 
   if (EnvConstants.serverClientId.isEmpty) {
     AppLogger.error('SERVER_CLIENT_ID no proporcionado.', tag: 'main');
