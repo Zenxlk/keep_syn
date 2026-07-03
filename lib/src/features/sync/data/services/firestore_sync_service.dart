@@ -17,7 +17,7 @@ class FirestoreSyncService implements ISyncService {
   FirestoreSyncService({
     required Dio dio,
     Duration pollInterval = const Duration(seconds: 3),
-    Duration maxPollDuration = const Duration(minutes: 20),
+    Duration maxPollDuration = const Duration(minutes: 5),
   })  : _dio = dio,
         _pollInterval = pollInterval,
         _maxPollDuration = maxPollDuration;
