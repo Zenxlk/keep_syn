@@ -132,6 +132,9 @@ class SpotifyRemoteDataSource {
         final stdRes = StandardResponse.fromJson(
           Map<String, dynamic>.from(response.data as Map),
         );
+        if (!stdRes.isOk) {
+          throw ServerException(stdRes.message);
+        }
         final data = stdRes.data ?? <String, dynamic>{};
         total = data['total'] is num ? (data['total'] as num).toInt() : 0;
 
