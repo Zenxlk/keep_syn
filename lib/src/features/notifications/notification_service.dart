@@ -73,9 +73,20 @@ class NotificationService {
   }
 
   Future<void> _saveToken(String uid, String token) async {
-    await _db.collection('user_devices').doc(uid).set({
+    final data = {
       'fcmTokens': FieldValue.arrayUnion([token]),
       'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    };
+    try {
+      await _db.collection('user_devices').doc(uid).set(data, SetOptions(merge: true));
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        // Auth token may not have propagated to Firestore yet — retry after 4s.
+        await Future.delayed(const Duration(seconds: 4));
+        await _db.collection('user_devices').doc(uid).set(data, SetOptions(merge: true));
+      } else {
+        rethrow;
+      }
+    }
   }
 }
