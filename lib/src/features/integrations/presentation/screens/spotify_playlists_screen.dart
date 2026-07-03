@@ -132,9 +132,12 @@ class _SpotifyPlaylistsScreenState extends ConsumerState<SpotifyPlaylistsScreen>
                     return _PlaylistCard(
                       playlist: playlist,
                       isSyncing: !syncState.canStartNewSync ||
-                          _loadingPlaylistId != null,
+                          _loadingPlaylistId != null ||
+                          playlist.isSpotifyGenerated,
                       isLoading: _loadingPlaylistId == playlist.id,
-                      onSync: () => _startSync(context, ref, playlist),
+                      onSync: playlist.isSpotifyGenerated
+                          ? null
+                          : () => _startSync(context, ref, playlist),
                     );
                   },
                 );
@@ -190,9 +193,9 @@ class _SpotifyPlaylistsScreenState extends ConsumerState<SpotifyPlaylistsScreen>
     setState(() => _loadingPlaylistId = playlist.id);
 
     try {
-      final tracks = await ref.read(
-        spotifyPlaylistTracksProvider(playlist.id).future,
-      );
+      final tracks = await ref
+          .read(spotifyDataSourceProvider)
+          .getPlaylistTracks(playlist.id);
 
       final domainPlaylist = playlist.toDomain(tracks);
       final job = SyncJob(
@@ -227,13 +230,22 @@ class _SpotifyPlaylistsScreenState extends ConsumerState<SpotifyPlaylistsScreen>
   }
 
   String _friendlyError(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('generada por spotify') ||
+        lower.contains('daily mix') ||
+        lower.contains('on repeat') ||
+        lower.contains('privada de otro')) {
+      return 'Esta playlist no puede sincronizarse. '
+          'Spotify no permite acceder a sus tracks por API '
+          '(puede ser una playlist generada por Spotify o privada de otro usuario).';
+    }
     if (raw.contains('403') ||
-        raw.toLowerCase().contains('permisos') ||
-        raw.toLowerCase().contains('permiso')) {
+        lower.contains('permisos') ||
+        lower.contains('permiso')) {
       return 'Spotify no permite leer esta playlist. '
           'Ve a Integraciones → Spotify, desvincula y vuelve a conectar.';
     }
-    if (raw.contains('401') || raw.toLowerCase().contains('expiró')) {
+    if (raw.contains('401') || lower.contains('expiró')) {
       return 'Sesión de Spotify expirada. '
           'Ve a Integraciones → Spotify, desvincula y vuelve a conectar.';
     }
@@ -245,7 +257,7 @@ class _PlaylistCard extends StatelessWidget {
   final SpotifyPlaylistModel playlist;
   final bool isSyncing;
   final bool isLoading;
-  final VoidCallback onSync;
+  final VoidCallback? onSync;
 
   const _PlaylistCard({
     required this.playlist,
@@ -256,6 +268,8 @@ class _PlaylistCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isRestricted = playlist.isSpotifyGenerated;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -277,23 +291,42 @@ class _PlaylistCard extends StatelessWidget {
                     '${playlist.ownerName != null ? ' · ${playlist.ownerName}' : ''}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
+                  if (isRestricted) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Generada por Spotify · no compatible',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                    ),
+                  ],
                 ],
               ),
             ),
             const SizedBox(width: 12),
-            FilledButton(
-              onPressed: isSyncing ? null : onSync,
-              child: isLoading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text('Sincronizar'),
-            ),
+            if (isRestricted)
+              Tooltip(
+                message: 'Spotify no permite sincronizar\nplaylists generadas automáticamente.',
+                child: Icon(
+                  Icons.block_rounded,
+                  color: Theme.of(context).colorScheme.outline,
+                  size: 22,
+                ),
+              )
+            else
+              FilledButton(
+                onPressed: isSyncing ? null : onSync,
+                child: isLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Sincronizar'),
+              ),
           ],
         ),
       ),

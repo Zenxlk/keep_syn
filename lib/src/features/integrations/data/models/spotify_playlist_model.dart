@@ -7,6 +7,7 @@ class SpotifyPlaylistModel extends Equatable {
   final String name;
   final String? imageUrl;
   final String? ownerName;
+  final String? ownerId;
   final int tracksTotal;
 
   const SpotifyPlaylistModel({
@@ -14,8 +15,13 @@ class SpotifyPlaylistModel extends Equatable {
     required this.name,
     this.imageUrl,
     this.ownerName,
+    this.ownerId,
     required this.tracksTotal,
   });
+
+  /// Playlists curadas por Spotify (Daily Mix, Discover Weekly, etc.)
+  /// devuelven 403 al acceder a sus tracks vía API.
+  bool get isSpotifyGenerated => ownerId == 'spotify';
 
   factory SpotifyPlaylistModel.fromJson(Map<String, dynamic> json) {
     final images = (json['images'] as List?)?.whereType<Map>().toList() ??
@@ -43,6 +49,7 @@ class SpotifyPlaylistModel extends Equatable {
           ? images.first['url']?.toString()
           : json['imageUrl']?.toString(),
       ownerName: owner['display_name']?.toString(),
+      ownerId: json['ownerId']?.toString() ?? owner['id']?.toString(),
       tracksTotal: tracksTotal,
     );
   }
@@ -58,6 +65,6 @@ class SpotifyPlaylistModel extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, name, imageUrl, ownerName, tracksTotal];
+  List<Object?> get props => [id, name, imageUrl, ownerName, ownerId, tracksTotal];
 }
 
