@@ -99,8 +99,8 @@ function createSpotifySourceAdapter() {
         id: playlist.id,
         name: playlist.name || `playlist_${playlistId}`,
         description: playlist.description || "",
-        totalTracks: playlist.tracks && typeof playlist.tracks.total === "number" ?
-          playlist.tracks.total : 0,
+        totalTracks: playlist.items && typeof playlist.items.total === "number" ?
+          playlist.items.total : 0,
         imageUrl: Array.isArray(playlist.images) && playlist.images[0] ?
           playlist.images[0].url : null,
       };
@@ -117,7 +117,7 @@ function createSpotifySourceAdapter() {
 
       const items = Array.isArray(response.items) ? response.items : [];
       const tracks = items
-          .map((item) => normalizeSpotifyTrack(item.track || item))
+          .map((item) => normalizeSpotifyTrack(item.item || item))
           .filter((track) => Boolean(track && track.id));
 
       const total = typeof response.total === "number" ? response.total : tracks.length;
