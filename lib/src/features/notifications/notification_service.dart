@@ -3,7 +3,7 @@ import 'dart:io' show Platform;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 
 /// Top-level handler required by firebase_messaging for background messages.
 /// Must be a top-level function (not a method).
@@ -23,38 +23,36 @@ class NotificationService {
   StreamSubscription<RemoteMessage>? _foregroundSub;
   StreamSubscription<String>? _tokenRefreshSub;
 
+  // macOS requiere entitlement com.apple.developer.aps-environment + APNS
+  // configurado en Firebase Console. Hasta que esté listo, solo Android/iOS/web.
   static bool get fcmSupported =>
-      kIsWeb || Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+      kIsWeb || Platform.isAndroid || Platform.isIOS;
 
   /// Call once after the user is authenticated.
+  /// Errors are caught and logged — notification failure is non-critical.
   Future<void> initialize({required String uid}) async {
     if (!fcmSupported) return;
+    try {
+      await _fcm.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
 
-    // Register background handler (safe to call multiple times).
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+      final token = await _fcm.getToken();
+      if (token != null) await _saveToken(uid, token);
 
-    // Request permission (Android 13+ and iOS).
-    await _fcm.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-      provisional: false,
-    );
+      _tokenRefreshSub?.cancel();
+      _tokenRefreshSub = _fcm.onTokenRefresh.listen(
+        (newToken) => _saveToken(uid, newToken),
+      );
 
-    // Get and persist the current token.
-    final token = await _fcm.getToken();
-    if (token != null) await _saveToken(uid, token);
-
-    // Refresh token when it changes.
-    _tokenRefreshSub?.cancel();
-    _tokenRefreshSub = _fcm.onTokenRefresh.listen(
-      (newToken) => _saveToken(uid, newToken),
-    );
-
-    // When app is in foreground and a message arrives, show a simple snack
-    // or let the OS handle it — nothing special needed here.
-    _foregroundSub?.cancel();
-    _foregroundSub = FirebaseMessaging.onMessage.listen((_) {});
+      _foregroundSub?.cancel();
+      _foregroundSub = FirebaseMessaging.onMessage.listen((_) {});
+    } catch (e) {
+      debugPrint('[NotificationService] FCM init failed (non-critical): $e');
+    }
   }
 
   /// Call on logout to remove this device's token from Firestore.
