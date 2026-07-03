@@ -1,5 +1,5 @@
 const {exchangeAuthCode, getUserPlaylists, getPlaylistTracks} = require("./spotifyClient");
-const {storeSpotifyTokens, clearSpotifyTokens, isSpotifyConnected, getValidSpotifyAccessToken} = require("./spotifyTokenService");
+const {storeSpotifyTokens, clearSpotifyTokens, isSpotifyConnected, getValidSpotifyAccessToken, hasRequiredSpotifyScope} = require("./spotifyTokenService");
 
 /**
  * GET /v1/integrations/spotify/status
@@ -93,6 +93,15 @@ async function listPlaylistTracks(req, res) {
   const {playlistId} = req.params;
   const limit = Math.min(parseInt(req.query.limit) || 100, 100);
   const offset = parseInt(req.query.offset) || 0;
+
+  const hasScope = await hasRequiredSpotifyScope(uid, "playlist-read-private");
+  if (!hasScope) {
+    return res.error(
+        "Tu token de Spotify no tiene el permiso 'playlist-read-private'. " +
+        "Desvincula y vuelve a conectar Spotify para renovar los permisos.",
+        403,
+    );
+  }
 
   const accessToken = await getValidSpotifyAccessToken(uid);
   const data = await getPlaylistTracks({accessToken, playlistId, limit, offset});

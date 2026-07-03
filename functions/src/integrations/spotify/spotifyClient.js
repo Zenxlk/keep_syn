@@ -61,11 +61,7 @@ async function getPlaylist({accessToken, playlistId}) {
 async function getPlaylistTracks({accessToken, playlistId, offset = 0, limit = 100}) {
   const {data} = await axios.get(`${SPOTIFY_API}/playlists/${playlistId}/tracks`, {
     headers: _authHeaders(accessToken),
-    params: {
-      offset,
-      limit,
-      fields: "items(track(id,name,artists,album,external_ids,duration_ms,uri)),total,next",
-    },
+    params: {offset, limit},
   });
   return data;
 }

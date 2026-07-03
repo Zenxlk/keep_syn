@@ -111,9 +111,29 @@ async function isSpotifyConnected(uid) {
   }
 }
 
+/**
+ * Returns true if the stored Spotify scope includes the required scope.
+ * Returns true when there is no scope recorded (old token before scope tracking).
+ * @param {string} uid
+ * @param {string} requiredScope
+ * @return {Promise<boolean>}
+ */
+async function hasRequiredSpotifyScope(uid, requiredScope) {
+  try {
+    const doc = await _docRef(uid).get();
+    if (!doc.exists) return false;
+    const scope = doc.data()?.spotify?.scope;
+    if (!scope) return true; // no scope recorded — assume OK, let Spotify decide
+    return scope.split(" ").includes(requiredScope);
+  } catch (_) {
+    return true; // on error, let the API call happen and handle the response
+  }
+}
+
 module.exports = {
   storeSpotifyTokens,
   clearSpotifyTokens,
   getValidSpotifyAccessToken,
   isSpotifyConnected,
+  hasRequiredSpotifyScope,
 };
