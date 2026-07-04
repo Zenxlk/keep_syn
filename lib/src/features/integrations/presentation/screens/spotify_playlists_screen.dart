@@ -132,12 +132,9 @@ class _SpotifyPlaylistsScreenState extends ConsumerState<SpotifyPlaylistsScreen>
                     return _PlaylistCard(
                       playlist: playlist,
                       isSyncing: !syncState.canStartNewSync ||
-                          _loadingPlaylistId != null ||
-                          playlist.isSpotifyGenerated,
+                          _loadingPlaylistId != null,
                       isLoading: _loadingPlaylistId == playlist.id,
-                      onSync: playlist.isSpotifyGenerated
-                          ? null
-                          : () => _startSync(context, ref, playlist),
+                      onSync: () => _startSync(context, ref, playlist),
                     );
                   },
                 );
@@ -268,8 +265,6 @@ class _PlaylistCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isRestricted = playlist.isSpotifyGenerated;
-
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -291,42 +286,23 @@ class _PlaylistCard extends StatelessWidget {
                     '${playlist.ownerName != null ? ' · ${playlist.ownerName}' : ''}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
-                  if (isRestricted) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      'Generada por Spotify · no compatible',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: Theme.of(context).colorScheme.outline,
-                          ),
-                    ),
-                  ],
                 ],
               ),
             ),
             const SizedBox(width: 12),
-            if (isRestricted)
-              Tooltip(
-                message: 'Spotify no permite sincronizar\nplaylists generadas automáticamente.',
-                child: Icon(
-                  Icons.block_rounded,
-                  color: Theme.of(context).colorScheme.outline,
-                  size: 22,
-                ),
-              )
-            else
-              FilledButton(
-                onPressed: isSyncing ? null : onSync,
-                child: isLoading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text('Sincronizar'),
-              ),
+            FilledButton(
+              onPressed: isSyncing ? null : onSync,
+              child: isLoading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Sincronizar'),
+            ),
           ],
         ),
       ),
