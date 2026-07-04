@@ -1,5 +1,5 @@
-const {exchangeAuthCode, getUserPlaylists, getPlaylistTracks} = require("./spotifyClient");
-const {storeSpotifyTokens, clearSpotifyTokens, isSpotifyConnected, getValidSpotifyAccessToken, hasRequiredSpotifyScope} = require("./spotifyTokenService");
+const { exchangeAuthCode, getUserPlaylists, getPlaylistTracks } = require('./spotifyClient');
+const { storeSpotifyTokens, clearSpotifyTokens, isSpotifyConnected, getValidSpotifyAccessToken, hasRequiredSpotifyScope } = require('./spotifyTokenService');
 
 /**
  * GET /v1/integrations/spotify/status
@@ -7,8 +7,8 @@ const {storeSpotifyTokens, clearSpotifyTokens, isSpotifyConnected, getValidSpoti
 async function getStatus(req, res) {
   const uid = req.user.uid;
   const connected = await isSpotifyConnected(uid);
-  return res.ok("Estado de Spotify obtenido.", {
-    status: connected ? "connected" : "notConnected",
+  return res.ok('Estado de Spotify obtenido.', {
+    status: connected ? 'connected' : 'notConnected',
   });
 }
 
@@ -18,10 +18,10 @@ async function getStatus(req, res) {
  */
 async function linkAccount(req, res) {
   const uid = req.user.uid;
-  const {code, redirectUri, clientId} = req.body || {};
+  const { code, redirectUri, clientId } = req.body || {};
 
   if (!code || !redirectUri) {
-    return res.error("code y redirectUri son requeridos.", 400);
+    return res.error('code y redirectUri son requeridos.', 400);
   }
 
   const usedClientId = clientId || process.env.SPOTIFY_CLIENT_ID;
@@ -35,7 +35,7 @@ async function linkAccount(req, res) {
   });
 
   if (!tokens.access_token || !tokens.refresh_token) {
-    return res.error("No se recibieron tokens de Spotify.", 502);
+    return res.error('No se recibieron tokens de Spotify.', 502);
   }
 
   await storeSpotifyTokens(uid, {
@@ -45,7 +45,7 @@ async function linkAccount(req, res) {
     scope: tokens.scope,
   });
 
-  return res.ok("Spotify vinculado correctamente.", {status: "connected"});
+  return res.ok('Spotify vinculado correctamente.', { status: 'connected' });
 }
 
 /**
@@ -54,7 +54,7 @@ async function linkAccount(req, res) {
 async function unlinkAccount(req, res) {
   const uid = req.user.uid;
   await clearSpotifyTokens(uid);
-  return res.ok("Spotify desvinculado.", {status: "notConnected"});
+  return res.ok('Spotify desvinculado.', { status: 'notConnected' });
 }
 
 /**
@@ -67,9 +67,9 @@ async function listPlaylists(req, res) {
   const offset = parseInt(req.query.offset) || 0;
 
   const accessToken = await getValidSpotifyAccessToken(uid);
-  const data = await getUserPlaylists({accessToken, limit, offset});
+  const data = await getUserPlaylists({ accessToken, limit, offset });
 
-  return res.ok("Playlists obtenidas.", {
+  return res.ok('Playlists obtenidas.', {
     items: (data.items || []).map((p) => ({
       id: p.id,
       name: p.name,
@@ -91,37 +91,37 @@ async function listPlaylists(req, res) {
  */
 async function listPlaylistTracks(req, res) {
   const uid = req.user.uid;
-  const {playlistId} = req.params;
+  const { playlistId } = req.params;
   const limit = Math.min(parseInt(req.query.limit) || 100, 100);
   const offset = parseInt(req.query.offset) || 0;
 
-  const hasScope = await hasRequiredSpotifyScope(uid, "playlist-read-private");
+  const hasScope = await hasRequiredSpotifyScope(uid, 'playlist-read-private');
   if (!hasScope) {
     return res.error(
-        "Tu token de Spotify no tiene el permiso 'playlist-read-private'. " +
-        "Desvincula y vuelve a conectar Spotify para renovar los permisos.",
-        403,
+      'Tu token de Spotify no tiene el permiso \'playlist-read-private\'. '
+        + 'Desvincula y vuelve a conectar Spotify para renovar los permisos.',
+      403,
     );
   }
 
   const accessToken = await getValidSpotifyAccessToken(uid);
-  console.log("[getPlaylistTracks] uid:", uid, "playlist:", playlistId);
-  const data = await getPlaylistTracks({accessToken, playlistId, limit, offset});
+  console.log('[getPlaylistTracks] uid:', uid, 'playlist:', playlistId);
+  const data = await getPlaylistTracks({ accessToken, playlistId, limit, offset });
 
   const tracks = (data.items || [])
-      .map((item) => item.item)
-      .filter(Boolean)
-      .map((track) => ({
-        id: track.id,
-        name: track.name,
-        artists: (track.artists || []).map((a) => ({id: a.id, name: a.name})),
-        album: track.album ? {id: track.album.id, name: track.album.name} : null,
-        externalIds: track.external_ids || {},
-        durationMs: track.duration_ms || null,
-        uri: track.uri || null,
-      }));
+    .map((item) => item.item)
+    .filter(Boolean)
+    .map((track) => ({
+      id: track.id,
+      name: track.name,
+      artists: (track.artists || []).map((a) => ({ id: a.id, name: a.name })),
+      album: track.album ? { id: track.album.id, name: track.album.name } : null,
+      externalIds: track.external_ids || {},
+      durationMs: track.duration_ms || null,
+      uri: track.uri || null,
+    }));
 
-  return res.ok("Tracks obtenidos.", {
+  return res.ok('Tracks obtenidos.', {
     items: tracks,
     total: data.total || 0,
     next: data.next || null,
@@ -130,4 +130,4 @@ async function listPlaylistTracks(req, res) {
   });
 }
 
-module.exports = {getStatus, linkAccount, unlinkAccount, listPlaylists, listPlaylistTracks};
+module.exports = { getStatus, linkAccount, unlinkAccount, listPlaylists, listPlaylistTracks };

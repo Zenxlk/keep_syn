@@ -1,7 +1,7 @@
-const axios = require("axios");
-const {storeYouTubeTokens, clearYouTubeTokens, isYouTubeConnected} = require("./youtubeTokenService");
+const axios = require('axios');
+const { storeYouTubeTokens, clearYouTubeTokens, isYouTubeConnected } = require('./youtubeTokenService');
 
-const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
+const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 
 /**
  * GET /v1/integrations/youtube/status
@@ -9,8 +9,8 @@ const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 async function getStatus(req, res) {
   const uid = req.user.uid;
   const connected = await isYouTubeConnected(uid);
-  return res.ok("Estado de YouTube obtenido.", {
-    status: connected ? "connected" : "notConnected",
+  return res.ok('Estado de YouTube obtenido.', {
+    status: connected ? 'connected' : 'notConnected',
   });
 }
 
@@ -20,24 +20,24 @@ async function getStatus(req, res) {
  */
 async function linkAccount(req, res) {
   const uid = req.user.uid;
-  const {serverAuthCode} = req.body || {};
+  const { serverAuthCode } = req.body || {};
 
   if (!serverAuthCode) {
-    return res.error("serverAuthCode es requerido.", 400);
+    return res.error('serverAuthCode es requerido.', 400);
   }
 
-  const {data: tokens} = await axios.post(TOKEN_ENDPOINT, null, {
+  const { data: tokens } = await axios.post(TOKEN_ENDPOINT, null, {
     params: {
-      grant_type: "authorization_code",
+      grant_type: 'authorization_code',
       code: serverAuthCode,
       client_id: process.env.YOUTUBE_CLIENT_ID,
       client_secret: process.env.YOUTUBE_CLIENT_SECRET,
-      redirect_uri: process.env.YOUTUBE_REDIRECT_URI || "",
+      redirect_uri: process.env.YOUTUBE_REDIRECT_URI || '',
     },
   });
 
   if (!tokens.access_token || !tokens.refresh_token) {
-    return res.error("No se recibieron tokens de YouTube.", 502);
+    return res.error('No se recibieron tokens de YouTube.', 502);
   }
 
   await storeYouTubeTokens(uid, {
@@ -47,7 +47,7 @@ async function linkAccount(req, res) {
     scope: tokens.scope,
   });
 
-  return res.ok("YouTube vinculado correctamente.", {status: "connected"});
+  return res.ok('YouTube vinculado correctamente.', { status: 'connected' });
 }
 
 /**
@@ -56,7 +56,7 @@ async function linkAccount(req, res) {
 async function unlinkAccount(req, res) {
   const uid = req.user.uid;
   await clearYouTubeTokens(uid);
-  return res.ok("YouTube desvinculado.", {status: "notConnected"});
+  return res.ok('YouTube desvinculado.', { status: 'notConnected' });
 }
 
-module.exports = {getStatus, linkAccount, unlinkAccount};
+module.exports = { getStatus, linkAccount, unlinkAccount };

@@ -1,11 +1,11 @@
-const axios = require("axios");
-const {searchYTMusicTracks} = require("./ytmusicSearchClient");
-const {getCachedCandidates, setCachedCandidates} = require("./trackSearchCache");
+const axios = require('axios');
+const { searchYTMusicTracks } = require('./ytmusicSearchClient');
+const { getCachedCandidates, setCachedCandidates } = require('./trackSearchCache');
 
-const YT_API = "https://www.googleapis.com/youtube/v3";
+const YT_API = 'https://www.googleapis.com/youtube/v3';
 
 function _authHeaders(accessToken) {
-  return {Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json"};
+  return { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
 }
 
 /**
@@ -15,18 +15,18 @@ function _authHeaders(accessToken) {
  * @param {number} [params.limit=200]
  * @return {Promise<Array<Object>>}
  */
-async function listPlaylists({accessToken, limit = 200}) {
+async function listPlaylists({ accessToken, limit = 200 }) {
   const items = [];
   let pageToken;
 
   while (items.length < limit) {
-    const {data} = await axios.get(`${YT_API}/playlists`, {
+    const { data } = await axios.get(`${YT_API}/playlists`, {
       headers: _authHeaders(accessToken),
       params: {
-        part: "snippet",
+        part: 'snippet',
         mine: true,
         maxResults: Math.min(50, limit - items.length),
-        ...(pageToken ? {pageToken} : {}),
+        ...(pageToken ? { pageToken } : {}),
       },
     });
 
@@ -46,17 +46,17 @@ async function listPlaylists({accessToken, limit = 200}) {
  * @param {string} [params.description]
  * @return {Promise<Object>}
  */
-async function createPlaylist({accessToken, name, description = ""}) {
-  const {data} = await axios.post(
-      `${YT_API}/playlists`,
-      {
-        snippet: {title: name, description},
-        status: {privacyStatus: "private"},
-      },
-      {
-        headers: _authHeaders(accessToken),
-        params: {part: "snippet,status"},
-      },
+async function createPlaylist({ accessToken, name, description = '' }) {
+  const { data } = await axios.post(
+    `${YT_API}/playlists`,
+    {
+      snippet: { title: name, description },
+      status: { privacyStatus: 'private' },
+    },
+    {
+      headers: _authHeaders(accessToken),
+      params: { part: 'snippet,status' },
+    },
   );
   return data;
 }
@@ -69,18 +69,18 @@ async function createPlaylist({accessToken, name, description = ""}) {
  * @param {number} [params.limit=500]
  * @return {Promise<Array<Object>>}
  */
-async function listPlaylistTracks({accessToken, playlistId, limit = 500}) {
+async function listPlaylistTracks({ accessToken, playlistId, limit = 500 }) {
   const items = [];
   let pageToken;
 
   while (items.length < limit) {
-    const {data} = await axios.get(`${YT_API}/playlistItems`, {
+    const { data } = await axios.get(`${YT_API}/playlistItems`, {
       headers: _authHeaders(accessToken),
       params: {
-        part: "snippet",
+        part: 'snippet',
         playlistId,
         maxResults: 50,
-        ...(pageToken ? {pageToken} : {}),
+        ...(pageToken ? { pageToken } : {}),
       },
     });
 
@@ -102,13 +102,13 @@ async function listPlaylistTracks({accessToken, playlistId, limit = 500}) {
  * @param {number} [params.limit=5]
  * @return {Promise<Array<Object>>}
  */
-async function searchTracks({accessToken, track, limit = 5}) {
+async function searchTracks({ accessToken, track, limit = 5 }) {
   const cached = await getCachedCandidates(track);
   if (cached) return cached.slice(0, limit);
 
   let candidates;
   try {
-    candidates = await searchYTMusicTracks({track, limit});
+    candidates = await searchYTMusicTracks({ track, limit });
   } catch (_) {
     candidates = [];
   }
@@ -128,19 +128,19 @@ async function searchTracks({accessToken, track, limit = 5}) {
  * @param {Object} params.track - Must have `id` (videoId)
  * @return {Promise<Object>}
  */
-async function addTrackToPlaylist({accessToken, playlistId, track}) {
-  const {data} = await axios.post(
-      `${YT_API}/playlistItems`,
-      {
-        snippet: {
-          playlistId,
-          resourceId: {kind: "youtube#video", videoId: track.id},
-        },
+async function addTrackToPlaylist({ accessToken, playlistId, track }) {
+  const { data } = await axios.post(
+    `${YT_API}/playlistItems`,
+    {
+      snippet: {
+        playlistId,
+        resourceId: { kind: 'youtube#video', videoId: track.id },
       },
-      {
-        headers: _authHeaders(accessToken),
-        params: {part: "snippet"},
-      },
+    },
+    {
+      headers: _authHeaders(accessToken),
+      params: { part: 'snippet' },
+    },
   );
   return data;
 }
