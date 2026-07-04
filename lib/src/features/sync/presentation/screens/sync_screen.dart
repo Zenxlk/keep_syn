@@ -31,12 +31,15 @@ class SyncScreen extends ConsumerWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 12),
-                  if (state.isRunning || state.isPreparing)
+                  if ((state.isRunning || state.isPreparing) && !state.hasKnownTotal)
                     const LinearProgressIndicator()
                   else
                     LinearProgressIndicator(value: state.progress),
                   const SizedBox(height: 8),
-                  Text('${(state.progress * 100).toStringAsFixed(0)}%'),
+                  if (state.hasKnownTotal)
+                    Text(
+                      '${state.processedTracks} de ${state.totalTracks} canciones',
+                    ),
                   const SizedBox(height: 8),
                   Text(
                     state.progressMessage ??

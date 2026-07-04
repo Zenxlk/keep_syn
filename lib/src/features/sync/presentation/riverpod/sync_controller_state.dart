@@ -20,6 +20,8 @@ class SyncControllerState extends Equatable {
   final SyncResult? result;
   final Failure? failure;
   final double progress;
+  final int processedTracks;
+  final int totalTracks;
   final String? progressMessage;
   final SyncStatus? lastSyncStatus;
   final DateTime? lastSyncAt;
@@ -33,6 +35,8 @@ class SyncControllerState extends Equatable {
     this.result,
     this.failure,
     this.progress = 0,
+    this.processedTracks = 0,
+    this.totalTracks = 0,
     this.progressMessage,
     this.lastSyncStatus,
     this.lastSyncAt,
@@ -50,6 +54,7 @@ class SyncControllerState extends Equatable {
       status == SyncStatus.cancelled;
   bool get canStartNewSync => !sessionSyncInProgress && !isPreparing && !isRunning;
   bool get hasError => failure != null;
+  bool get hasKnownTotal => totalTracks > 0;
 
   SyncControllerState copyWith({
     SyncStatus? status,
@@ -61,6 +66,9 @@ class SyncControllerState extends Equatable {
     bool clearFailure = false,
     bool clearResult = false,
     double? progress,
+    int? processedTracks,
+    int? totalTracks,
+    bool clearCounts = false,
     String? progressMessage,
     bool clearProgressMessage = false,
     SyncStatus? lastSyncStatus,
@@ -75,7 +83,9 @@ class SyncControllerState extends Equatable {
           sessionSyncInProgress ?? this.sessionSyncInProgress,
       result: clearResult ? null : (result ?? this.result),
       failure: clearFailure ? null : (failure ?? this.failure),
-      progress: progress ?? this.progress,
+      progress: clearCounts ? 0 : (progress ?? this.progress),
+      processedTracks: clearCounts ? 0 : (processedTracks ?? this.processedTracks),
+      totalTracks: clearCounts ? 0 : (totalTracks ?? this.totalTracks),
       progressMessage:
           clearProgressMessage ? null : (progressMessage ?? this.progressMessage),
       lastSyncStatus: lastSyncStatus ?? this.lastSyncStatus,
@@ -93,10 +103,11 @@ class SyncControllerState extends Equatable {
         result,
         failure,
         progress,
+        processedTracks,
+        totalTracks,
         progressMessage,
         lastSyncStatus,
         lastSyncAt,
         recentErrors,
       ];
 }
-

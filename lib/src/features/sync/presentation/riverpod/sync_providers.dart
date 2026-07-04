@@ -85,7 +85,7 @@ class SyncController extends _$SyncController {
       activeJob: job,
       sessionActiveJobId: job.jobId,
       sessionSyncInProgress: true,
-      progress: 0,
+      clearCounts: true,
       clearProgressMessage: true,
       clearResult: true,
       clearFailure: true,
@@ -111,7 +111,7 @@ class SyncController extends _$SyncController {
         state = state.copyWith(
           status: SyncStatus.failed,
           failure: failure,
-          progress: 0,
+          clearCounts: true,
           sessionSyncInProgress: false,
           sessionActiveJobId: null,
           lastSyncStatus: SyncStatus.failed,
@@ -232,7 +232,7 @@ class SyncController extends _$SyncController {
       activeJob: null,
       sessionActiveJobId: null,
       sessionSyncInProgress: false,
-      progress: 0,
+      clearCounts: true,
       clearProgressMessage: true,
       clearFailure: true,
       clearResult: true,
@@ -243,6 +243,8 @@ class SyncController extends _$SyncController {
     state = state.copyWith(
       status: SyncStatus.running,
       progress: progress.value,
+      processedTracks: progress.processed,
+      totalTracks: progress.total,
       progressMessage: progress.message,
       clearFailure: true,
     );
@@ -318,6 +320,8 @@ class SyncController extends _$SyncController {
             state = state.copyWith(
               status: SyncStatus.running,
               progress: progress.value,
+              processedTracks: progress.processed,
+              totalTracks: progress.total,
               progressMessage: progress.message,
               clearFailure: true,
             );
@@ -330,7 +334,7 @@ class SyncController extends _$SyncController {
         state = state.copyWith(
           status: SyncStatus.failed,
           failure: failure,
-          progress: 0,
+          clearCounts: true,
           sessionSyncInProgress: false,
           sessionActiveJobId: null,
           lastSyncStatus: SyncStatus.failed,
