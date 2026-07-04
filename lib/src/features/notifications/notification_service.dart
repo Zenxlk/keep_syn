@@ -39,7 +39,10 @@ class NotificationService {
         provisional: false,
       );
 
-      if (settings.authorizationStatus == AuthorizationStatus.denied) return;
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        _activeUid = null;
+        return;
+      }
 
       // iOS: show notifications while the app is in foreground.
       await _fcm.setForegroundNotificationPresentationOptions(
