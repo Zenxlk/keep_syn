@@ -26,7 +26,7 @@ final spotifyPlaylistsProvider = FutureProvider<List<SpotifyPlaylistModel>>((
 
 final spotifyPlaylistTracksProvider =
     FutureProvider.family<List<SpotifyTrackModel>, String>((ref, playlistId) {
-      return ref.read(spotifyDataSourceProvider).getPlaylistTracks(playlistId);
+      return ref.watch(spotifyDataSourceProvider).getPlaylistTracks(playlistId);
     });
 
 final spotifyStatusProvider =
