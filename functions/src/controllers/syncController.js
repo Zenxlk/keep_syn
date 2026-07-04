@@ -65,13 +65,13 @@ exports.createJob = async (req, res) => {
 
       if (['idle', 'preparing'].includes(existingState)) {
         try {
-          await enqueueSyncJob({jobId: existingJob.id, uid});
+          await enqueueSyncJob({ jobId: existingJob.id, uid });
           reEnqueued = true;
 
           await existingJob.ref.set({
             state: 'preparing',
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          }, {merge: true});
+          }, { merge: true });
 
           await db.collection('sync_job_events').add({
             jobId: existingJob.id,
@@ -94,8 +94,8 @@ exports.createJob = async (req, res) => {
             },
           });
         } catch (reEnqueueFailure) {
-          reEnqueueError = reEnqueueFailure && reEnqueueFailure.message ?
-            reEnqueueFailure.message : 'Error desconocido re-encolando job existente.';
+          reEnqueueError = reEnqueueFailure && reEnqueueFailure.message
+            ? reEnqueueFailure.message : 'Error desconocido re-encolando job existente.';
 
           await db.collection('sync_job_events').add({
             jobId: existingJob.id,
@@ -138,9 +138,9 @@ exports.createJob = async (req, res) => {
         },
       });
 
-      const duplicateMessage = reEnqueued ?
-        'Ya existia un job activo y fue re-encolado para continuar.' :
-        'Ya existe un job de sincronización activo para esta playlist.';
+      const duplicateMessage = reEnqueued
+        ? 'Ya existia un job activo y fue re-encolado para continuar.'
+        : 'Ya existe un job de sincronización activo para esta playlist.';
 
       return res.ok('Ya existe un job de sincronización activo para esta playlist.', {
         jobId: existingJob.id,
@@ -178,7 +178,7 @@ exports.createJob = async (req, res) => {
     let enqueueErrorMessage = null;
 
     try {
-      await enqueueSyncJob({jobId: newJobRef.id, uid});
+      await enqueueSyncJob({ jobId: newJobRef.id, uid });
       await addDebugLog({
         uid,
         message: 'SYNC_JOB_ENQUEUE_OK',
@@ -189,8 +189,8 @@ exports.createJob = async (req, res) => {
       });
     } catch (enqueueError) {
       enqueued = false;
-      enqueueErrorMessage = enqueueError && enqueueError.message ?
-        enqueueError.message : 'Error desconocido encolando job.';
+      enqueueErrorMessage = enqueueError && enqueueError.message
+        ? enqueueError.message : 'Error desconocido encolando job.';
 
       // No rompemos el flujo: el job queda creado para debug/reintento manual.
       await newJobRef.set({
@@ -201,7 +201,7 @@ exports.createJob = async (req, res) => {
           retriable: true,
         }),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, {merge: true});
+      }, { merge: true });
 
       await db.collection('sync_job_events').add({
         jobId: newJobRef.id,
@@ -247,12 +247,12 @@ exports.createJob = async (req, res) => {
         executionMode: 'task_queue_chunked',
         enqueued,
       },
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    const message = enqueued ?
-      'Job creado exitosamente.' :
-      'Job creado, pero no se pudo encolar para ejecucion automatica.';
+    const message = enqueued
+      ? 'Job creado exitosamente.'
+      : 'Job creado, pero no se pudo encolar para ejecucion automatica.';
 
     return res.ok(message, {
       jobId: newJobRef.id,
@@ -262,9 +262,8 @@ exports.createJob = async (req, res) => {
       enqueued,
       enqueueError: enqueueErrorMessage,
       // Usamos fecha local para la respuesta inicial
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     });
-
   } catch (error) {
     await addDebugLog({
       uid,
@@ -324,7 +323,7 @@ exports.cancelJob = async (req, res) => {
 
     await docRef.update({
       state: 'cancelled',
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
     return res.ok('Job cancelado exitosamente.', { jobId, state: 'cancelled' });
@@ -437,8 +436,8 @@ exports.getLastJob = async (req, res) => {
   try {
     const includeEvents = req.query.includeEvents === '1';
     const eventsLimitRaw = Number.parseInt(req.query.eventsLimit, 10);
-    const eventsLimit = Number.isFinite(eventsLimitRaw) ?
-      Math.max(1, Math.min(eventsLimitRaw, 50)) : 15;
+    const eventsLimit = Number.isFinite(eventsLimitRaw)
+      ? Math.max(1, Math.min(eventsLimitRaw, 50)) : 15;
 
     const snapshot = await db.collection('sync_jobs')
       .where('uid', '==', req.user.uid)

@@ -1,8 +1,8 @@
-const axios = require("axios");
-const admin = require("firebase-admin");
+const axios = require('axios');
+const admin = require('firebase-admin');
 
-const TOKEN_ENDPOINT = "https://accounts.spotify.com/api/token";
-const INTEGRATION_COLLECTION = "user_integrations";
+const TOKEN_ENDPOINT = 'https://accounts.spotify.com/api/token';
+const INTEGRATION_COLLECTION = 'user_integrations';
 
 function _docRef(uid) {
   return admin.firestore().collection(INTEGRATION_COLLECTION).doc(uid);
@@ -18,22 +18,22 @@ function _docRef(uid) {
  * @param {string} [tokens.scope]
  * @return {Promise<void>}
  */
-async function storeSpotifyTokens(uid, {accessToken, refreshToken, expiresInSeconds, scope}) {
+async function storeSpotifyTokens(uid, { accessToken, refreshToken, expiresInSeconds, scope }) {
   const expiresAt = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() + (expiresInSeconds - 60) * 1000),
+    new Date(Date.now() + (expiresInSeconds - 60) * 1000),
   );
 
   await _docRef(uid).set(
-      {
-        spotify: {
-          accessToken,
-          refreshToken,
-          expiresAt,
-          scope: scope || "",
-          connected: true,
-        },
+    {
+      spotify: {
+        accessToken,
+        refreshToken,
+        expiresAt,
+        scope: scope || '',
+        connected: true,
       },
-      {merge: true},
+    },
+    { merge: true },
   );
 }
 
@@ -44,8 +44,8 @@ async function storeSpotifyTokens(uid, {accessToken, refreshToken, expiresInSeco
  */
 async function clearSpotifyTokens(uid) {
   await _docRef(uid).set(
-      {spotify: {connected: false, accessToken: null, refreshToken: null}},
-      {merge: true},
+    { spotify: { connected: false, accessToken: null, refreshToken: null } },
+    { merge: true },
   );
 }
 
@@ -56,12 +56,12 @@ async function clearSpotifyTokens(uid) {
  */
 async function getValidSpotifyAccessToken(uid) {
   const doc = await _docRef(uid).get();
-  if (!doc.exists) throw new Error("Spotify no conectado para este usuario.");
+  if (!doc.exists) throw new Error('Spotify no conectado para este usuario.');
 
   const data = doc.data();
   const spotifyData = data && data.spotify;
   if (!spotifyData || !spotifyData.connected || !spotifyData.refreshToken) {
-    throw new Error("Spotify no conectado para este usuario.");
+    throw new Error('Spotify no conectado para este usuario.');
   }
 
   const now = admin.firestore.Timestamp.now();
@@ -73,18 +73,18 @@ async function getValidSpotifyAccessToken(uid) {
 
   const clientId = process.env.SPOTIFY_CLIENT_ID;
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
-  const b64 = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const b64 = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
   const response = await axios.post(
-      TOKEN_ENDPOINT,
-      new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: spotifyData.refreshToken,
-      }),
-      {headers: {Authorization: `Basic ${b64}`, "Content-Type": "application/x-www-form-urlencoded"}},
+    TOKEN_ENDPOINT,
+    new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: spotifyData.refreshToken,
+    }),
+    { headers: { 'Authorization': `Basic ${b64}`, 'Content-Type': 'application/x-www-form-urlencoded' } },
   );
 
-  const {access_token: accessToken, expires_in: expiresIn, refresh_token: newRefreshToken} = response.data;
+  const { access_token: accessToken, expires_in: expiresIn, refresh_token: newRefreshToken } = response.data;
 
   await storeSpotifyTokens(uid, {
     accessToken,
@@ -124,7 +124,7 @@ async function hasRequiredSpotifyScope(uid, requiredScope) {
     if (!doc.exists) return false;
     const scope = doc.data()?.spotify?.scope;
     if (!scope) return true; // no scope recorded — assume OK, let Spotify decide
-    return scope.split(" ").includes(requiredScope);
+    return scope.split(' ').includes(requiredScope);
   } catch (_) {
     return true; // on error, let the API call happen and handle the response
   }

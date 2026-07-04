@@ -1,7 +1,7 @@
-const crypto = require("crypto");
-const admin = require("firebase-admin");
+const crypto = require('crypto');
+const admin = require('firebase-admin');
 
-const CACHE_COLLECTION = "track_search_cache";
+const CACHE_COLLECTION = 'track_search_cache';
 const TTL_DAYS = 30;
 
 /**
@@ -11,24 +11,24 @@ const TTL_DAYS = 30;
  * @return {string}
  */
 function _buildKey(track) {
-  const isrc =
-    track.isrc ||
-    (track.externalIds && track.externalIds.isrc) ||
-    (track.external_ids && track.external_ids.isrc) ||
-    null;
+  const isrc
+    = track.isrc
+    || (track.externalIds && track.externalIds.isrc)
+    || (track.external_ids && track.external_ids.isrc)
+    || null;
 
   const raw = isrc
     ? `isrc:${isrc.toUpperCase()}`
-    : `sig:${(track.title || track.name || "").toLowerCase()}::${
-        Array.isArray(track.artists)
-          ? track.artists
-              .map((a) => (typeof a === "object" ? a.name : a))
-              .join("|")
-              .toLowerCase()
-          : ""
-      }`;
+    : `sig:${(track.title || track.name || '').toLowerCase()}::${
+      Array.isArray(track.artists)
+        ? track.artists
+          .map((a) => (typeof a === 'object' ? a.name : a))
+          .join('|')
+          .toLowerCase()
+        : ''
+    }`;
 
-  return crypto.createHash("sha256").update(raw).digest("hex");
+  return crypto.createHash('sha256').update(raw).digest('hex');
 }
 
 /**
@@ -53,7 +53,7 @@ async function getCachedCandidates(track) {
 async function setCachedCandidates(track, candidates) {
   const key = _buildKey(track);
   const expiresAt = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() + TTL_DAYS * 24 * 60 * 60 * 1000),
+    new Date(Date.now() + TTL_DAYS * 24 * 60 * 60 * 1000),
   );
 
   await admin.firestore().collection(CACHE_COLLECTION).doc(key).set({
@@ -63,4 +63,4 @@ async function setCachedCandidates(track, candidates) {
   });
 }
 
-module.exports = {getCachedCandidates, setCachedCandidates};
+module.exports = { getCachedCandidates, setCachedCandidates };

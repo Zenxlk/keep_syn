@@ -1,8 +1,8 @@
-const axios = require("axios");
-const admin = require("firebase-admin");
+const axios = require('axios');
+const admin = require('firebase-admin');
 
-const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
-const INTEGRATION_COLLECTION = "user_integrations";
+const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+const INTEGRATION_COLLECTION = 'user_integrations';
 
 function _docRef(uid) {
   return admin.firestore().collection(INTEGRATION_COLLECTION).doc(uid);
@@ -18,22 +18,22 @@ function _docRef(uid) {
  * @param {string} [tokens.scope]
  * @return {Promise<void>}
  */
-async function storeYouTubeTokens(uid, {accessToken, refreshToken, expiresInSeconds, scope}) {
+async function storeYouTubeTokens(uid, { accessToken, refreshToken, expiresInSeconds, scope }) {
   const expiresAt = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() + (expiresInSeconds - 60) * 1000),
+    new Date(Date.now() + (expiresInSeconds - 60) * 1000),
   );
 
   await _docRef(uid).set(
-      {
-        youtube: {
-          accessToken,
-          refreshToken,
-          expiresAt,
-          scope: scope || "",
-          connected: true,
-        },
+    {
+      youtube: {
+        accessToken,
+        refreshToken,
+        expiresAt,
+        scope: scope || '',
+        connected: true,
       },
-      {merge: true},
+    },
+    { merge: true },
   );
 }
 
@@ -44,8 +44,8 @@ async function storeYouTubeTokens(uid, {accessToken, refreshToken, expiresInSeco
  */
 async function clearYouTubeTokens(uid) {
   await _docRef(uid).set(
-      {youtube: {connected: false, accessToken: null, refreshToken: null}},
-      {merge: true},
+    { youtube: { connected: false, accessToken: null, refreshToken: null } },
+    { merge: true },
   );
 }
 
@@ -56,12 +56,12 @@ async function clearYouTubeTokens(uid) {
  */
 async function getValidYouTubeAccessToken(uid) {
   const doc = await _docRef(uid).get();
-  if (!doc.exists) throw new Error("YouTube no conectado para este usuario.");
+  if (!doc.exists) throw new Error('YouTube no conectado para este usuario.');
 
   const data = doc.data();
   const ytData = data && data.youtube;
   if (!ytData || !ytData.connected || !ytData.refreshToken) {
-    throw new Error("YouTube no conectado para este usuario.");
+    throw new Error('YouTube no conectado para este usuario.');
   }
 
   const now = admin.firestore.Timestamp.now();
@@ -73,14 +73,14 @@ async function getValidYouTubeAccessToken(uid) {
 
   const response = await axios.post(TOKEN_ENDPOINT, null, {
     params: {
-      grant_type: "refresh_token",
+      grant_type: 'refresh_token',
       refresh_token: ytData.refreshToken,
       client_id: process.env.YOUTUBE_CLIENT_ID,
       client_secret: process.env.YOUTUBE_CLIENT_SECRET,
     },
   });
 
-  const {access_token: accessToken, expires_in: expiresIn} = response.data;
+  const { access_token: accessToken, expires_in: expiresIn } = response.data;
 
   await storeYouTubeTokens(uid, {
     accessToken,

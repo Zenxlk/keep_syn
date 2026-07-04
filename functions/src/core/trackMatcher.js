@@ -8,19 +8,19 @@ const MAX_REVIEW_OPTIONS = 3;
  * @param {string} value
  * @return {string}
  */
-function sanitizeTrackText(value = "") {
-  return String(value || "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/&/g, " and ")
-      .replace(/\s*[\[(][^\])]*\b(live|feat|ft\.?|featuring|remaster(?:ed)?|mix|version|edit|acoustic|karaoke|mono|stereo|deluxe|bonus track)\b[^\])]*[\])]/gi, " ")
-      .replace(/\s+-\s+(live|remaster(?:ed)?(?:\s+\d{4})?|radio edit|edit|mix|version|acoustic|karaoke|mono|stereo|instrumental).*$/gi, " ")
-      .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/gi, " ")
-      .replace(/[^a-z0-9\s]/g, " ")
-      .replace(/\b(the|a|an)\b/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+function sanitizeTrackText(value = '') {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/\s*[[(][^\])]*\b(live|feat|ft\.?|featuring|remaster(?:ed)?|mix|version|edit|acoustic|karaoke|mono|stereo|deluxe|bonus track)\b[^\])]*[\])]/gi, ' ')
+    .replace(/\s+-\s+(live|remaster(?:ed)?(?:\s+\d{4})?|radio edit|edit|mix|version|acoustic|karaoke|mono|stereo|instrumental).*$/gi, ' ')
+    .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/gi, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\b(the|a|an)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -28,11 +28,11 @@ function sanitizeTrackText(value = "") {
  * @return {string[]}
  */
 function sanitizeArtists(artists) {
-  const rawArtists = Array.isArray(artists) ? artists : [artists || ""];
+  const rawArtists = Array.isArray(artists) ? artists : [artists || ''];
   return rawArtists
-      .map((artist) => sanitizeTrackText(artist))
-      .filter(Boolean)
-      .sort();
+    .map((artist) => sanitizeTrackText(artist))
+    .filter(Boolean)
+    .sort();
 }
 
 /**
@@ -40,9 +40,9 @@ function sanitizeArtists(artists) {
  * @return {string}
  */
 function createTrackSignature(track = {}) {
-  const title = sanitizeTrackText(track.title || track.name || "");
+  const title = sanitizeTrackText(track.title || track.name || '');
   const artists = sanitizeArtists(getTrackArtists(track));
-  return `${title}::${artists.join("|")}`;
+  return `${title}::${artists.join('|')}`;
 }
 
 /**
@@ -50,27 +50,27 @@ function createTrackSignature(track = {}) {
  * @param {string} right
  * @return {number}
  */
-function levenshteinDistance(left = "", right = "") {
+function levenshteinDistance(left = '', right = '') {
   if (left === right) return 0;
   if (!left.length) return right.length;
   if (!right.length) return left.length;
 
   const matrix = Array.from(
-      {length: left.length + 1},
-      (_, row) => Array.from({length: right.length + 1}, (_, col) => {
-        if (row === 0) return col;
-        if (col === 0) return row;
-        return 0;
-      }),
+    { length: left.length + 1 },
+    (_, row) => Array.from({ length: right.length + 1 }, (_, col) => {
+      if (row === 0) return col;
+      if (col === 0) return row;
+      return 0;
+    }),
   );
 
   for (let row = 1; row <= left.length; row += 1) {
     for (let col = 1; col <= right.length; col += 1) {
       const cost = left[row - 1] === right[col - 1] ? 0 : 1;
       matrix[row][col] = Math.min(
-          matrix[row - 1][col] + 1,
-          matrix[row][col - 1] + 1,
-          matrix[row - 1][col - 1] + cost,
+        matrix[row - 1][col] + 1,
+        matrix[row][col - 1] + 1,
+        matrix[row - 1][col - 1] + cost,
       );
     }
   }
@@ -83,7 +83,7 @@ function levenshteinDistance(left = "", right = "") {
  * @param {string} right
  * @return {number}
  */
-function similarityPercent(left = "", right = "") {
+function similarityPercent(left = '', right = '') {
   const normalizedLeft = sanitizeTrackText(left);
   const normalizedRight = sanitizeTrackText(right);
 
@@ -104,16 +104,16 @@ function similarityPercent(left = "", right = "") {
 function getTrackArtists(track = {}) {
   if (Array.isArray(track.artists)) {
     return track.artists
-        .map((artist) => {
-          if (artist && typeof artist === "object") {
-            return artist.name || "";
-          }
-          return String(artist || "");
-        })
-        .filter(Boolean);
+      .map((artist) => {
+        if (artist && typeof artist === 'object') {
+          return artist.name || '';
+        }
+        return String(artist || '');
+      })
+      .filter(Boolean);
   }
 
-  if (typeof track.artist === "string") {
+  if (typeof track.artist === 'string') {
     return [track.artist];
   }
 
@@ -125,10 +125,10 @@ function getTrackArtists(track = {}) {
  * @return {string|null}
  */
 function getTrackIsrc(track = {}) {
-  return track.isrc ||
-    (track.externalIds && track.externalIds.isrc) ||
-    (track.external_ids && track.external_ids.isrc) ||
-    null;
+  return track.isrc
+    || (track.externalIds && track.externalIds.isrc)
+    || (track.external_ids && track.external_ids.isrc)
+    || null;
 }
 
 /**
@@ -137,10 +137,10 @@ function getTrackIsrc(track = {}) {
  * @return {number}
  */
 function computeTrackSimilarity(sourceTrack, candidate) {
-  const sourceTitle = sourceTrack.title || sourceTrack.name || "";
-  const candidateTitle = candidate.title || candidate.name || "";
-  const sourceAlbum = sourceTrack.album || "";
-  const candidateAlbum = candidate.album || "";
+  const sourceTitle = sourceTrack.title || sourceTrack.name || '';
+  const candidateTitle = candidate.title || candidate.name || '';
+  const sourceAlbum = sourceTrack.album || '';
+  const candidateAlbum = candidate.album || '';
   const sourceArtists = getTrackArtists(sourceTrack);
   const candidateArtists = getTrackArtists(candidate);
   const normalizedSourceTitle = sanitizeTrackText(sourceTitle);
@@ -150,26 +150,26 @@ function computeTrackSimilarity(sourceTrack, candidate) {
 
   const titleScore = similarityPercent(sourceTitle, candidateTitle);
   const artistScore = sourceArtists.length && candidateArtists.length ? Math.max(
-      ...sourceArtists.flatMap((sourceArtist) => candidateArtists.map(
-          (candidateArtist) => similarityPercent(sourceArtist, candidateArtist),
-      )),
+    ...sourceArtists.flatMap((sourceArtist) => candidateArtists.map(
+      (candidateArtist) => similarityPercent(sourceArtist, candidateArtist),
+    )),
   ) : 0;
-  const albumScore = sourceAlbum && candidateAlbum ?
-    similarityPercent(sourceAlbum, candidateAlbum) : 0;
+  const albumScore = sourceAlbum && candidateAlbum
+    ? similarityPercent(sourceAlbum, candidateAlbum) : 0;
 
   const sourceSignature = createTrackSignature(sourceTrack);
   const candidateSignature = createTrackSignature(candidate);
   const signatureBonus = sourceSignature === candidateSignature ? 12 : 0;
-  const titleContainmentBonus = normalizedSourceTitle && normalizedCandidateTitle &&
-    (normalizedCandidateTitle.includes(normalizedSourceTitle) ||
-    normalizedSourceTitle.includes(normalizedCandidateTitle)) ? 10 : 0;
-  const artistExactBonus = normalizedSourceArtists.join("|") &&
-    normalizedSourceArtists.join("|") === normalizedCandidateArtists.join("|") ?
-    8 : 0;
+  const titleContainmentBonus = normalizedSourceTitle && normalizedCandidateTitle
+    && (normalizedCandidateTitle.includes(normalizedSourceTitle)
+    || normalizedSourceTitle.includes(normalizedCandidateTitle)) ? 10 : 0;
+  const artistExactBonus = normalizedSourceArtists.join('|')
+    && normalizedSourceArtists.join('|') === normalizedCandidateArtists.join('|')
+    ? 8 : 0;
 
   const weightedScore = Math.round(
-      (titleScore * 0.65) + (artistScore * 0.25) + (albumScore * 0.10) +
-      signatureBonus + titleContainmentBonus + artistExactBonus,
+    (titleScore * 0.65) + (artistScore * 0.25) + (albumScore * 0.10)
+      + signatureBonus + titleContainmentBonus + artistExactBonus,
   );
 
   return Math.min(weightedScore, 100);
@@ -182,8 +182,8 @@ function computeTrackSimilarity(sourceTrack, candidate) {
  * @return {Object}
  */
 function findBestTrackMatch(sourceTrack, candidates = [], options = {}) {
-  const autoSuccessThreshold =
-    options.autoSuccessThreshold || AUTO_SUCCESS_THRESHOLD;
+  const autoSuccessThreshold
+    = options.autoSuccessThreshold || AUTO_SUCCESS_THRESHOLD;
   const reviewThreshold = options.reviewThreshold || REVIEW_THRESHOLD;
   const maxReviewOptions = options.maxReviewOptions || MAX_REVIEW_OPTIONS;
   const sourceIsrc = getTrackIsrc(sourceTrack);
@@ -191,12 +191,12 @@ function findBestTrackMatch(sourceTrack, candidates = [], options = {}) {
 
   if (!Array.isArray(candidates) || candidates.length === 0) {
     return {
-      status: "failed",
+      status: 'failed',
       confidence: 0,
-      strategy: "no_candidates",
+      strategy: 'no_candidates',
       matchedTrack: null,
       reviewOptions: [],
-      reason: "No se encontraron candidatos en la plataforma destino.",
+      reason: 'No se encontraron candidatos en la plataforma destino.',
     };
   }
 
@@ -208,9 +208,9 @@ function findBestTrackMatch(sourceTrack, candidates = [], options = {}) {
 
     if (exactIsrcMatch) {
       return {
-        status: "success",
+        status: 'success',
         confidence: 100,
-        strategy: "isrc",
+        strategy: 'isrc',
         matchedTrack: exactIsrcMatch,
         reviewOptions: [],
       };
@@ -223,34 +223,34 @@ function findBestTrackMatch(sourceTrack, candidates = [], options = {}) {
 
   if (sanitizedExactMatch) {
     return {
-      status: "success",
+      status: 'success',
       confidence: 96,
-      strategy: "sanitized_exact",
+      strategy: 'sanitized_exact',
       matchedTrack: sanitizedExactMatch,
       reviewOptions: [],
     };
   }
 
   const scoredCandidates = candidates
-      .map((candidate) => ({
-        candidate,
-        confidence: computeTrackSimilarity(sourceTrack, candidate),
-        strategy: "fuzzy",
-      }))
-      .sort((left, right) => right.confidence - left.confidence);
+    .map((candidate) => ({
+      candidate,
+      confidence: computeTrackSimilarity(sourceTrack, candidate),
+      strategy: 'fuzzy',
+    }))
+    .sort((left, right) => right.confidence - left.confidence);
 
   const best = scoredCandidates[0];
   const reviewOptions = scoredCandidates
-      .slice(0, maxReviewOptions)
-      .map((entry) => ({
-        confidence: entry.confidence,
-        strategy: entry.strategy,
-        track: entry.candidate,
-      }));
+    .slice(0, maxReviewOptions)
+    .map((entry) => ({
+      confidence: entry.confidence,
+      strategy: entry.strategy,
+      track: entry.candidate,
+    }));
 
   if (best.confidence > autoSuccessThreshold) {
     return {
-      status: "success",
+      status: 'success',
       confidence: best.confidence,
       strategy: best.strategy,
       matchedTrack: best.candidate,
@@ -260,22 +260,22 @@ function findBestTrackMatch(sourceTrack, candidates = [], options = {}) {
 
   if (best.confidence >= reviewThreshold) {
     return {
-      status: "review_pending",
+      status: 'review_pending',
       confidence: best.confidence,
       strategy: best.strategy,
       matchedTrack: null,
       reviewOptions,
-      reason: "Coincidencia ambigua: requiere confirmacion humana.",
+      reason: 'Coincidencia ambigua: requiere confirmacion humana.',
     };
   }
 
   return {
-    status: "failed",
+    status: 'failed',
     confidence: best.confidence,
     strategy: best.strategy,
     matchedTrack: null,
     reviewOptions,
-    reason: "La similitud esta por debajo del umbral minimo aceptado.",
+    reason: 'La similitud esta por debajo del umbral minimo aceptado.',
   };
 }
 

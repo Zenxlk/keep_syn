@@ -4,7 +4,7 @@ function getYouTubeConfig() {
 
   if (!clientId || !clientSecret) {
     throw new Error(
-      "Faltan YOUTUBE_CLIENT_ID o YOUTUBE_CLIENT_SECRET en el entorno.",
+      'Faltan YOUTUBE_CLIENT_ID o YOUTUBE_CLIENT_SECRET en el entorno.',
     );
   }
 
