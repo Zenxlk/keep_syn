@@ -1,0 +1,272 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Detect which parts of the repo changed so downstream jobs can be skipped.
+  # ──────────────────────────────────────────────────────────────────────────
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      flutter: ${{ steps.filter.outputs.flutter }}
+      functions: ${{ steps.filter.outputs.functions }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            flutter:
+              - 'lib/**'
+              - 'test/**'
+              - 'pubspec.yaml'
+              - 'pubspec.lock'
+              - 'analysis_options.yaml'
+              - 'android/**'
+              - 'ios/**'
+            functions:
+              - 'functions/src/**'
+              - 'functions/package.json'
+              - 'functions/package-lock.json'
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Flutter — static analysis
+  # ──────────────────────────────────────────────────────────────────────────
+  analyze:
+    name: Analyze
+    needs: detect-changes
+    if: needs.detect-changes.outputs.flutter == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter analyze --fatal-warnings
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Flutter — unit / widget tests
+  # ──────────────────────────────────────────────────────────────────────────
+  test:
+    name: Test
+    needs: detect-changes
+    if: needs.detect-changes.outputs.flutter == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter test --coverage
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/lcov.info
+          retention-days: 7
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Flutter — verify the app compiles (Android debug)
+  # Requires secret GOOGLE_SERVICES_JSON (base64-encoded google-services.json).
+  # The step is skipped gracefully if the secret is absent (e.g. fork PRs).
+  # ──────────────────────────────────────────────────────────────────────────
+  build-check:
+    name: Build Check
+    needs: [detect-changes, analyze, test]
+    if: needs.detect-changes.outputs.flutter == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Inject google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" | base64 -d > android/app/google-services.json
+          else
+            echo "Secret GOOGLE_SERVICES_JSON not set — skipping injection (fork PR?)"
+          fi
+
+      - run: flutter pub get
+      - run: flutter build apk --debug --no-pub
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Flutter — CVE scan on pub dependencies
+  # ──────────────────────────────────────────────────────────────────────────
+  dependency-audit:
+    name: Dependency Audit
+    needs: detect-changes
+    if: needs.detect-changes.outputs.flutter == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: dart pub audit
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Functions — ESLint
+  # ──────────────────────────────────────────────────────────────────────────
+  functions-lint:
+    name: Functions Lint
+    needs: detect-changes
+    if: needs.detect-changes.outputs.functions == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Functions — CVE scan on npm dependencies
+  # ──────────────────────────────────────────────────────────────────────────
+  functions-audit:
+    name: Functions Audit
+    needs: detect-changes
+    if: needs.detect-changes.outputs.functions == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - run: npm ci
+      - run: npm audit --audit-level=high
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Scan commits in this PR/push for leaked credentials.
+  # ──────────────────────────────────────────────────────────────────────────
+  secret-scanning:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: trufflesecurity/trufflehog@v3.88.34
+        with:
+          extra_args: --only-verified
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Audit this repo's own workflow files for security anti-patterns.
+  # ──────────────────────────────────────────────────────────────────────────
+  workflow-audit:
+    name: Workflow Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install zizmor
+        run: pip install zizmor --quiet
+
+      - name: Audit workflows
+        run: zizmor .github/workflows/
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Post a human-readable table to the PR/commit summary page.
+  # ──────────────────────────────────────────────────────────────────────────
+  summary:
+    name: Summary
+    needs:
+      - detect-changes
+      - analyze
+      - test
+      - build-check
+      - dependency-audit
+      - functions-lint
+      - functions-audit
+      - secret-scanning
+      - workflow-audit
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write job summary
+        run: |
+          icon() {
+            case "$1" in
+              success)   echo "✅" ;;
+              failure)   echo "❌" ;;
+              skipped)   echo "⏭️" ;;
+              cancelled) echo "🚫" ;;
+              *)         echo "❓" ;;
+            esac
+          }
+
+          flutter_changed="${{ needs.detect-changes.outputs.flutter }}"
+          functions_changed="${{ needs.detect-changes.outputs.functions }}"
+
+          {
+            echo "## CI Summary"
+            echo ""
+            echo "**Changed:** Flutter: \`$flutter_changed\` · Functions: \`$functions_changed\`"
+            echo ""
+            echo "| Job | Result |"
+            echo "|-----|--------|"
+            echo "| Analyze | $(icon ${{ needs.analyze.result }}) \`${{ needs.analyze.result }}\` |"
+            echo "| Test | $(icon ${{ needs.test.result }}) \`${{ needs.test.result }}\` |"
+            echo "| Build Check | $(icon ${{ needs.build-check.result }}) \`${{ needs.build-check.result }}\` |"
+            echo "| Dependency Audit | $(icon ${{ needs.dependency-audit.result }}) \`${{ needs.dependency-audit.result }}\` |"
+            echo "| Functions Lint | $(icon ${{ needs.functions-lint.result }}) \`${{ needs.functions-lint.result }}\` |"
+            echo "| Functions Audit | $(icon ${{ needs.functions-audit.result }}) \`${{ needs.functions-audit.result }}\` |"
+            echo "| Secret Scanning | $(icon ${{ needs.secret-scanning.result }}) \`${{ needs.secret-scanning.result }}\` |"
+            echo "| Workflow Audit | $(icon ${{ needs.workflow-audit.result }}) \`${{ needs.workflow-audit.result }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
