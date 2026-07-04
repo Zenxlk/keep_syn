@@ -83,6 +83,9 @@ macos/Flutter/GeneratedPluginRegistrant.swift
 /env/*.json
 !/env/*.example.json
 
+# Prompts / notas internas
+docs/prompts/
+
 # Env files genéricos locales
 .env
 .env.*
