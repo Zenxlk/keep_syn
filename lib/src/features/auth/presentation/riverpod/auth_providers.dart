@@ -131,6 +131,10 @@ class AuthController extends _$AuthController {
   }
 
   Future<void> signOut() async {
+    final uid = state.user?.uid;
+    if (uid != null) {
+      await NotificationService.instance.dispose(uid: uid);
+    }
     await ref.read(authRepositoryProvider).signOut();
 
     state = state.copyWith(

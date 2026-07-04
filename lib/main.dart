@@ -17,7 +17,7 @@ Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Register background message handler only on platforms that support FCM.
-  if (NotificationService.fcmSupported) {
+  if (NotificationService.fcmSupported) { 
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
