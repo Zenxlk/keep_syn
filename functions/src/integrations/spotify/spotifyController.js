@@ -105,7 +105,7 @@ async function listPlaylistTracks(req, res) {
   }
 
   const accessToken = await getValidSpotifyAccessToken(uid);
-  console.log("[getPlaylistTracks] uid:", uid, "playlist:", playlistId, "token_prefix:", accessToken.slice(0, 12));
+  console.log("[getPlaylistTracks] uid:", uid, "playlist:", playlistId);
   const data = await getPlaylistTracks({accessToken, playlistId, limit, offset});
 
   const tracks = (data.items || [])
