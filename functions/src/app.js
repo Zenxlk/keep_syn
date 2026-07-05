@@ -22,4 +22,12 @@ app.use((req, res) => {
   res.error('Endpoint no encontrado.', 404);
 });
 
+// Error handler global — captura errores de next(err) y los devuelve como JSON
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('[GlobalErrorHandler]', err);
+  const message = err?.message || 'Error interno del servidor.';
+  res.error(message, 500);
+});
+
 module.exports = app;

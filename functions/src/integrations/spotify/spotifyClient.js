@@ -1,72 +1,85 @@
-const axios = require("axios");
-const axiosRetry = require("axios-retry").default;
+const axios = require('axios');
 
-const spotifyApi = axios.create({
-  baseURL: "https://api.spotify.com/v1",
-  timeout: 10000,
-});
+const SPOTIFY_API = 'https://api.spotify.com/v1';
 
-axiosRetry(spotifyApi, {
-  retries: 3,
-  retryDelay: (retryCount, error) => {
-    if (error.response && error.response.status === 429) {
-      const retryAfter = error.response.headers["retry-after"];
-      if (retryAfter) {
-        return Number.parseInt(retryAfter, 10) * 1000;
-      }
-    }
-    return axiosRetry.exponentialDelay(retryCount);
-  },
-  retryCondition: (error) => {
-    const status = error.response ? error.response.status : null;
-    return axiosRetry.isNetworkOrIdempotentRequestError(error) ||
-      status === 429 ||
-      (status >= 500 && status < 600);
-  },
-});
-
-async function getMePlaylists({accessToken, limit = 20, offset = 0}) {
-  const response = await spotifyApi.get("/me/playlists", {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    params: {limit, offset},
-  });
-
-  return response.data;
+function _authHeaders(accessToken) {
+  return { Authorization: `Bearer ${accessToken}` };
 }
 
-async function getPlaylist({accessToken, playlistId}) {
-  const response = await spotifyApi.get(`/playlists/${playlistId}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
+/**
+ * Exchanges an authorization code for Spotify access + refresh tokens.
+ * @param {Object} params
+ * @param {string} params.code
+ * @param {string} params.redirectUri
+ * @param {string} params.clientId
+ * @param {string} params.clientSecret
+ * @return {Promise<Object>} { access_token, refresh_token, expires_in, scope }
+ */
+async function exchangeAuthCode({ code, redirectUri, clientId, clientSecret }) {
+  const b64 = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+  const { data } = await axios.post(
+    'https://accounts.spotify.com/api/token',
+    new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri,
+    }),
+    {
+      headers: {
+        'Authorization': `Basic ${b64}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
     },
-    params: {
-      market: "from_token",
-    },
-  });
-
-  return response.data;
+  );
+  return data;
 }
 
-async function getPlaylistTracks({accessToken, playlistId, limit = 50, offset = 0}) {
-  const response = await spotifyApi.get(`/playlists/${playlistId}/tracks`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    params: {
-      limit,
-      offset,
-      market: "from_token",
-    },
+/**
+ * Fetches Spotify playlist metadata.
+ * @param {Object} params
+ * @param {string} params.accessToken
+ * @param {string} params.playlistId
+ * @return {Promise<Object>}
+ */
+async function getPlaylist({ accessToken, playlistId }) {
+  const { data } = await axios.get(`${SPOTIFY_API}/playlists/${playlistId}`, {
+    headers: _authHeaders(accessToken),
+    params: { fields: 'id,name,description,images,items.total,owner.display_name' },
   });
-
-  return response.data;
+  return data;
 }
 
-module.exports = {
-  getMePlaylists,
-  getPlaylist,
-  getPlaylistTracks,
-};
+/**
+ * Fetches one page of tracks from a Spotify playlist.
+ * @param {Object} params
+ * @param {string} params.accessToken
+ * @param {string} params.playlistId
+ * @param {number} [params.offset=0]
+ * @param {number} [params.limit=100]
+ * @return {Promise<Object>} { items, total, next, offset, limit }
+ */
+async function getPlaylistTracks({ accessToken, playlistId, offset = 0, limit = 100 }) {
+  const { data } = await axios.get(`${SPOTIFY_API}/playlists/${playlistId}/items`, {
+    headers: _authHeaders(accessToken),
+    params: { offset, limit },
+  });
+  return data;
+}
 
+/**
+ * Fetches the authenticated user's Spotify playlists (paginated).
+ * @param {Object} params
+ * @param {string} params.accessToken
+ * @param {number} [params.limit=50]
+ * @param {number} [params.offset=0]
+ * @return {Promise<Object>} { items, total, next }
+ */
+async function getUserPlaylists({ accessToken, limit = 50, offset = 0 }) {
+  const { data } = await axios.get(`${SPOTIFY_API}/me/playlists`, {
+    headers: _authHeaders(accessToken),
+    params: { limit, offset },
+  });
+  return data;
+}
+
+module.exports = { exchangeAuthCode, getPlaylist, getPlaylistTracks, getUserPlaylists };

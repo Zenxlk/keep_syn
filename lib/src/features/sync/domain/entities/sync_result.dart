@@ -32,6 +32,7 @@ class SyncResult extends Equatable {
   final int updated;
   final int skipped;
   final int failed;
+  final int reviewPendingCount;
   final List<SyncTrackError> errors;
   final DateTime completedAt;
 
@@ -43,11 +44,13 @@ class SyncResult extends Equatable {
     required this.updated,
     required this.skipped,
     required this.failed,
+    this.reviewPendingCount = 0,
     required this.errors,
     required this.completedAt,
   });
 
   bool get hasFailures => failed > 0 || errors.isNotEmpty;
+  bool get hasReviewPending => reviewPendingCount > 0;
 
   @override
   List<Object?> get props => [
@@ -58,6 +61,7 @@ class SyncResult extends Equatable {
         updated,
         skipped,
         failed,
+        reviewPendingCount,
         errors,
         completedAt,
       ];

@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Detect which parts of the repo changed so downstream jobs can be skipped.
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      flutter: ${{ steps.filter.outputs.flutter }}
+      functions: ${{ steps.filter.outputs.functions }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            flutter:
+              - 'lib/**'
+              - 'test/**'
+              - 'pubspec.yaml'
+              - 'pubspec.lock'
+              - 'android/**'
+              - 'ios/**'
+            functions:
+              - 'functions/src/**'
+              - 'functions/package.json'
+              - 'functions/package-lock.json'
+
+  # Flutter — pub get + Android debug build
+  # Requires secrets: GOOGLE_SERVICES_JSON and FIREBASE_OPTIONS_DART (both base64-encoded).
+  # If either secret is absent (fork PRs) the build step is skipped gracefully.
+  flutter-build:
+    name: Flutter Build
+    needs: detect-changes
+    if: needs.detect-changes.outputs.flutter == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Inject Firebase config
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          FIREBASE_OPTIONS_DART: ${{ secrets.FIREBASE_OPTIONS_DART }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" | base64 --decode --ignore-garbage > android/app/google-services.json
+          fi
+          if [ -n "$FIREBASE_OPTIONS_DART" ]; then
+            printf '%s' "$FIREBASE_OPTIONS_DART" | base64 --decode --ignore-garbage > lib/firebase_options.dart
+          fi
+
+      - run: flutter pub get
+
+      - name: Build APK (debug)
+        run: |
+          if [ -f lib/firebase_options.dart ] && [ -f android/app/google-services.json ]; then
+            flutter build apk --debug --no-pub
+          else
+            echo "Config secrets not set — build skipped (add GOOGLE_SERVICES_JSON and FIREBASE_OPTIONS_DART to repo secrets)"
+          fi
+
+  # Functions — lint
+  functions-lint:
+    name: Functions Lint
+    needs: detect-changes
+    if: needs.detect-changes.outputs.functions == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint

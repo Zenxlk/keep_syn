@@ -6,5 +6,6 @@ router.post('/', syncController.createJob);
 router.get('/last', syncController.getLastJob); // Debe ir antes de /:jobId para no chocar
 router.get('/:jobId', syncController.getJobStatus);
 router.post('/:jobId/cancel', syncController.cancelJob);
+router.post('/:jobId/review', syncController.submitReview);
 
 module.exports = router;

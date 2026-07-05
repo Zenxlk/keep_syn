@@ -5,7 +5,7 @@ function getSpotifyConfig() {
 
   if (!clientId || !clientSecret || !redirectUri) {
     throw new Error(
-        "Faltan SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET o SPOTIFY_REDIRECT_URI en el entorno.",
+      'Faltan SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET o SPOTIFY_REDIRECT_URI en el entorno.',
     );
   }
 

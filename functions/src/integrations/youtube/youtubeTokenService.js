@@ -1,141 +1,115 @@
-const axios = require("axios");
-const admin = require("firebase-admin");
-const {getYouTubeConfig} = require("../../../config/youtubeConfig");
+const axios = require('axios');
+const admin = require('firebase-admin');
 
-const db = admin.firestore();
+const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+const INTEGRATION_COLLECTION = 'user_integrations';
 
-async function exchangeCodeForTokens({code}) {
-  const {clientId, clientSecret} = getYouTubeConfig();
-
-  const payloadObject = {
-    code,
-    client_id: clientId,
-    client_secret: clientSecret,
-    grant_type: "authorization_code",
-  };
-
-
-  const payload = new URLSearchParams(payloadObject).toString();
-
-  const response = await axios.post(
-    "https://oauth2.googleapis.com/token",
-    payload,
-    {
-      headers: {"Content-Type": "application/x-www-form-urlencoded"},
-      timeout: 10000,
-    },
-  );
-
-  return response.data;
+function _docRef(uid) {
+  return admin.firestore().collection(INTEGRATION_COLLECTION).doc(uid);
 }
 
-async function refreshYouTubeTokens({refreshToken}) {
-  const {clientId, clientSecret} = getYouTubeConfig();
-
-  const payload = new URLSearchParams({
-    client_id: clientId,
-    client_secret: clientSecret,
-    refresh_token: refreshToken,
-    grant_type: "refresh_token",
-  }).toString();
-
-  const response = await axios.post(
-    "https://oauth2.googleapis.com/token",
-    payload,
-    {
-      headers: {"Content-Type": "application/x-www-form-urlencoded"},
-      timeout: 10000,
-    },
+/**
+ * Stores YouTube OAuth tokens in Firestore for the given user.
+ * @param {string} uid
+ * @param {Object} tokens
+ * @param {string} tokens.accessToken
+ * @param {string} tokens.refreshToken
+ * @param {number} tokens.expiresInSeconds
+ * @param {string} [tokens.scope]
+ * @return {Promise<void>}
+ */
+async function storeYouTubeTokens(uid, { accessToken, refreshToken, expiresInSeconds, scope }) {
+  const expiresAt = admin.firestore.Timestamp.fromDate(
+    new Date(Date.now() + (expiresInSeconds - 60) * 1000),
   );
 
-  return response.data;
-}
-
-async function saveYouTubeSecrets({uid, accessToken, refreshToken, expiresIn}) {
-  const expiresAt = Date.now() + (expiresIn * 1000);
-
-  await db.collection("integration_secrets").doc(uid).set(
+  await _docRef(uid).set(
     {
       youtube: {
         accessToken,
         refreshToken,
         expiresAt,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        scope: scope || '',
+        connected: true,
       },
     },
-    {merge: true},
-  );
-
-  await db.collection("user_integrations").doc(uid).set(
-    {
-      youtube: {
-        status: "connected",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-    },
-    {merge: true},
+    { merge: true },
   );
 }
 
-async function markYouTubeExpired(uid) {
-  await db.collection("user_integrations").doc(uid).set(
-    {
-      youtube: {
-        status: "expired",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-    },
-    {merge: true},
+/**
+ * Removes stored YouTube tokens for the given user.
+ * @param {string} uid
+ * @return {Promise<void>}
+ */
+async function clearYouTubeTokens(uid) {
+  await _docRef(uid).set(
+    { youtube: { connected: false, accessToken: null, refreshToken: null } },
+    { merge: true },
   );
 }
 
+/**
+ * Returns a valid YouTube access token, refreshing it if expired.
+ * @param {string} uid
+ * @return {Promise<string>}
+ */
 async function getValidYouTubeAccessToken(uid) {
-  const secretDoc = await db.collection("integration_secrets").doc(uid).get();
-  const youtube = secretDoc.exists ? secretDoc.data().youtube : null;
+  const doc = await _docRef(uid).get();
+  if (!doc.exists) throw new Error('YouTube no conectado para este usuario.');
 
-  if (!youtube || !youtube.refreshToken) {
-    const error = new Error("YOUTUBE_NOT_LINKED");
-    error.code = "YOUTUBE_NOT_LINKED";
-    throw error;
+  const data = doc.data();
+  const ytData = data && data.youtube;
+  if (!ytData || !ytData.connected || !ytData.refreshToken) {
+    throw new Error('YouTube no conectado para este usuario.');
   }
 
-  const now = Date.now();
-  const expiresAt = youtube.expiresAt || 0;
-  const hasValidAccessToken = youtube.accessToken && expiresAt > now + 60000;
+  const now = admin.firestore.Timestamp.now();
+  const isExpired = !ytData.expiresAt || ytData.expiresAt.seconds <= now.seconds;
 
-  if (hasValidAccessToken) {
-    return youtube.accessToken;
+  if (!isExpired && ytData.accessToken) {
+    return ytData.accessToken;
   }
 
+  const response = await axios.post(TOKEN_ENDPOINT, null, {
+    params: {
+      grant_type: 'refresh_token',
+      refresh_token: ytData.refreshToken,
+      client_id: process.env.YOUTUBE_CLIENT_ID,
+      client_secret: process.env.YOUTUBE_CLIENT_SECRET,
+    },
+  });
+
+  const { access_token: accessToken, expires_in: expiresIn } = response.data;
+
+  await storeYouTubeTokens(uid, {
+    accessToken,
+    refreshToken: ytData.refreshToken,
+    expiresInSeconds: expiresIn || 3600,
+  });
+
+  return accessToken;
+}
+
+/**
+ * Returns true if the user has YouTube connected.
+ * @param {string} uid
+ * @return {Promise<boolean>}
+ */
+async function isYouTubeConnected(uid) {
   try {
-    const refreshed = await refreshYouTubeTokens({
-      refreshToken: youtube.refreshToken,
-    });
-
-    const newAccessToken = refreshed.access_token;
-    const nextRefreshToken = refreshed.refresh_token || youtube.refreshToken;
-    const expiresIn = refreshed.expires_in || 3600;
-
-    await saveYouTubeSecrets({
-      uid,
-      accessToken: newAccessToken,
-      refreshToken: nextRefreshToken,
-      expiresIn,
-    });
-
-    return newAccessToken;
-  } catch (error) {
-    await markYouTubeExpired(uid);
-    const authError = new Error("YOUTUBE_AUTH_EXPIRED");
-    authError.code = "YOUTUBE_AUTH_EXPIRED";
-    throw authError;
+    const doc = await _docRef(uid).get();
+    if (!doc.exists) return false;
+    const data = doc.data();
+    return Boolean(data && data.youtube && data.youtube.connected && data.youtube.refreshToken);
+  } catch (_) {
+    return false;
   }
 }
 
 module.exports = {
-  exchangeCodeForTokens,
+  storeYouTubeTokens,
+  clearYouTubeTokens,
   getValidYouTubeAccessToken,
-  refreshYouTubeTokens,
-  saveYouTubeSecrets,
-  markYouTubeExpired,
+  isYouTubeConnected,
 };

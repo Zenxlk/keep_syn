@@ -132,6 +132,9 @@ class SpotifyRemoteDataSource {
         final stdRes = StandardResponse.fromJson(
           Map<String, dynamic>.from(response.data as Map),
         );
+        if (!stdRes.isOk) {
+          throw ServerException(stdRes.message);
+        }
         final data = stdRes.data ?? <String, dynamic>{};
         total = data['total'] is num ? (data['total'] as num).toInt() : 0;
 
@@ -164,6 +167,7 @@ class SpotifyRemoteDataSource {
   String _extractBackendMessage(DioException e) {
     final data = e.response?.data;
     if (data is Map<String, dynamic>) {
+      // Formato estándar de la API: { status, message, data }
       final message = data['message'];
       final nestedData = data['data'];
       if (nestedData is Map<String, dynamic>) {
@@ -188,6 +192,15 @@ class SpotifyRemoteDataSource {
 
       if (message is String && message.trim().isNotEmpty) {
         return message;
+      }
+
+      // Formato de error a nivel plataforma de Firebase: { error: { status, message } }
+      final firebaseError = data['error'];
+      if (firebaseError is Map<String, dynamic>) {
+        final fbMessage = firebaseError['message'];
+        if (fbMessage is String && fbMessage.trim().isNotEmpty) {
+          return fbMessage;
+        }
       }
     }
 

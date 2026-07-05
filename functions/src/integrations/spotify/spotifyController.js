@@ -1,224 +1,133 @@
-const admin = require("firebase-admin");
-const {getSpotifyConfig} = require("../../../config/spotifyConfig");
-const {
-  exchangeCodeForTokens,
-  refreshSpotifyTokens,
-  saveSpotifySecrets,
-  getValidSpotifyAccessToken,
-  markSpotifyExpired,
-} = require("./spotifyTokenService");
-const {
-  getMePlaylists,
-  getPlaylistTracks: fetchPlaylistTracks,
-} = require("./spotifyClient");
+const { exchangeAuthCode, getUserPlaylists, getPlaylistTracks } = require('./spotifyClient');
+const { storeSpotifyTokens, clearSpotifyTokens, isSpotifyConnected, getValidSpotifyAccessToken, hasRequiredSpotifyScope } = require('./spotifyTokenService');
 
-const db = admin.firestore();
-
-async function addEvent(uid, type, payload = {}) {
-  await db.collection("app_events").add({
-    uid,
-    type,
-    payload,
-    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+/**
+ * GET /v1/integrations/spotify/status
+ */
+async function getStatus(req, res) {
+  const uid = req.user.uid;
+  const connected = await isSpotifyConnected(uid);
+  return res.ok('Estado de Spotify obtenido.', {
+    status: connected ? 'connected' : 'notConnected',
   });
 }
 
-exports.linkAccount = async (req, res) => {
-  const {code, redirectUri, clientId} = req.body;
+/**
+ * POST /v1/integrations/spotify/link
+ * Body: { code: string, redirectUri: string, clientId?: string }
+ */
+async function linkAccount(req, res) {
   const uid = req.user.uid;
-  const spotifyConfig = getSpotifyConfig();
+  const { code, redirectUri, clientId } = req.body || {};
 
   if (!code || !redirectUri) {
-    return res.error("Faltan parametros requeridos: code y redirectUri.", 400);
+    return res.error('code y redirectUri son requeridos.', 400);
   }
 
-  if (spotifyConfig.redirectUri && spotifyConfig.redirectUri !== redirectUri) {
-    return res.error("redirectUri no permitida para Spotify.", 400);
+  const usedClientId = clientId || process.env.SPOTIFY_CLIENT_ID;
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+
+  const tokens = await exchangeAuthCode({
+    code,
+    redirectUri,
+    clientId: usedClientId,
+    clientSecret,
+  });
+
+  if (!tokens.access_token || !tokens.refresh_token) {
+    return res.error('No se recibieron tokens de Spotify.', 502);
   }
 
-  try {
-    await addEvent(uid, "spotify_link_started");
+  await storeSpotifyTokens(uid, {
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    expiresInSeconds: tokens.expires_in || 3600,
+    scope: tokens.scope,
+  });
 
-    if (clientId && clientId !== spotifyConfig.clientId) {
-      return res.error("clientId no permitido para Spotify.", 400, {
-        clientIdReceived: clientId,
-        clientIdExpectedSuffix: spotifyConfig.clientId.slice(-6),
-      });
-    }
+  return res.ok('Spotify vinculado correctamente.', { status: 'connected' });
+}
 
-    const tokenResponse = await exchangeCodeForTokens({code, redirectUri});
-    await saveSpotifySecrets({
-      uid,
-      accessToken: tokenResponse.access_token,
-      refreshToken: tokenResponse.refresh_token,
-      expiresIn: tokenResponse.expires_in || 3600,
-    });
-
-    await addEvent(uid, "spotify_link_success");
-
-    return res.ok("Cuenta de Spotify vinculada exitosamente.", {
-      platform: "spotify",
-      status: "connected",
-    });
-  } catch (error) {
-    await addEvent(uid, "spotify_link_failed", {
-      message: error.message,
-      code: error.code || null,
-    });
-
-    const spotifyErrorData =
-      error && error.response ? error.response.data : error.message;
-    console.error("Error vinculando Spotify:", spotifyErrorData);
-    return res.error("Fallo al verificar el codigo de autorizacion con Spotify.", 502, {
-      spotifyError: spotifyErrorData,
-      redirectUriReceived: redirectUri,
-      redirectUriExpected: spotifyConfig.redirectUri,
-      clientIdReceived: clientId || null,
-      clientIdExpectedSuffix: spotifyConfig.clientId.slice(-6),
-    });
-  }
-};
-
-exports.refreshAccount = async (req, res) => {
+/**
+ * POST /v1/integrations/spotify/unlink
+ */
+async function unlinkAccount(req, res) {
   const uid = req.user.uid;
+  await clearSpotifyTokens(uid);
+  return res.ok('Spotify desvinculado.', { status: 'notConnected' });
+}
 
-  try {
-    const secretDoc = await db.collection("integration_secrets").doc(uid).get();
-    const spotify = secretDoc.exists ? secretDoc.data().spotify : null;
-
-    if (!spotify || !spotify.refreshToken) {
-      return res.error("Spotify no esta vinculado para este usuario.", 400);
-    }
-
-    const tokenResponse = await refreshSpotifyTokens({
-      refreshToken: spotify.refreshToken,
-    });
-
-    await saveSpotifySecrets({
-      uid,
-      accessToken: tokenResponse.access_token,
-      refreshToken: tokenResponse.refresh_token || spotify.refreshToken,
-      expiresIn: tokenResponse.expires_in || 3600,
-    });
-
-    await addEvent(uid, "spotify_refresh_success");
-
-    return res.ok("Token de Spotify renovado.", {
-      platform: "spotify",
-      status: "connected",
-    });
-  } catch (error) {
-    await markSpotifyExpired(uid);
-    await addEvent(uid, "spotify_refresh_failed", {
-      message: error.message,
-      code: error.code || null,
-    });
-    return res.error("No se pudo refrescar el token de Spotify.", 502);
-  }
-};
-
-exports.unlinkAccount = async (req, res) => {
+/**
+ * GET /v1/integrations/spotify/playlists
+ * Query: { limit?, offset? }
+ */
+async function listPlaylists(req, res) {
   const uid = req.user.uid;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 50);
+  const offset = parseInt(req.query.offset) || 0;
 
-  try {
-    await db.collection("integration_secrets").doc(uid).set({
-      spotify: admin.firestore.FieldValue.delete(),
-    }, {merge: true});
+  const accessToken = await getValidSpotifyAccessToken(uid);
+  const data = await getUserPlaylists({ accessToken, limit, offset });
 
-    await db.collection("user_integrations").doc(uid).set({
-      spotify: {
-        status: "notConnected",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-    }, {merge: true});
+  return res.ok('Playlists obtenidas.', {
+    items: (data.items || []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      tracksTotal: p.items ? p.items.total : 0,
+      imageUrl: p.images && p.images[0] ? p.images[0].url : null,
+      ownerName: p.owner ? p.owner.display_name : null,
+      ownerId: p.owner ? p.owner.id : null,
+    })),
+    total: data.total || 0,
+    next: data.next || null,
+    offset,
+    limit,
+  });
+}
 
-    await addEvent(uid, "spotify_unlink_success");
-
-    return res.ok("Cuenta de Spotify desvinculada.", {
-      platform: "spotify",
-      status: "notConnected",
-    });
-  } catch (error) {
-    return res.error("Error al desvincular Spotify.", 500);
-  }
-};
-
-exports.getStatus = async (req, res) => {
-  try {
-    const uid = req.user.uid;
-    const doc = await db.collection("user_integrations").doc(uid).get();
-    const status = doc.exists && doc.data().spotify && doc.data().spotify.status ?
-      doc.data().spotify.status : "notConnected";
-
-    return res.ok("Estado recuperado.", {
-      platform: "spotify",
-      status,
-    });
-  } catch (error) {
-    return res.error("Error interno recuperando estado.", 500);
-  }
-};
-
-exports.getPlaylists = async (req, res) => {
+/**
+ * GET /v1/integrations/spotify/playlists/:playlistId/tracks
+ * Query: { limit?, offset? }
+ */
+async function listPlaylistTracks(req, res) {
   const uid = req.user.uid;
-  const limit = Number.parseInt(req.query.limit, 10) || 20;
-  const offset = Number.parseInt(req.query.offset, 10) || 0;
+  const { playlistId } = req.params;
+  const limit = Math.min(parseInt(req.query.limit) || 100, 100);
+  const offset = parseInt(req.query.offset) || 0;
 
-  try {
-    const accessToken = await getValidSpotifyAccessToken(uid);
-    const data = await getMePlaylists({accessToken, limit, offset});
-
-    return res.ok("Playlists obtenidas.", data);
-  } catch (error) {
-    if (error.code === "SPOTIFY_NOT_LINKED") {
-      return res.error("Spotify no esta vinculado.", 400);
-    }
-    if (error.code === "SPOTIFY_AUTH_EXPIRED") {
-      return res.error("Sesion de Spotify expirada. Vuelve a vincular la cuenta.", 401);
-    }
-
-    if (error.response && error.response.status === 429) {
-      await addEvent(uid, "spotify_rate_limited", {endpoint: "getPlaylists"});
-      return res.error("Spotify rate limit alcanzado. Intenta de nuevo.", 429);
-    }
-
-    return res.error("No se pudieron obtener playlists de Spotify.", 502);
-  }
-};
-
-exports.getPlaylistTracks = async (req, res) => {
-  const uid = req.user.uid;
-  const {playlistId} = req.params;
-  const limit = Number.parseInt(req.query.limit, 10) || 50;
-  const offset = Number.parseInt(req.query.offset, 10) || 0;
-
-  if (!playlistId) {
-    return res.error("playlistId es requerido.", 400);
+  const hasScope = await hasRequiredSpotifyScope(uid, 'playlist-read-private');
+  if (!hasScope) {
+    return res.error(
+      'Tu token de Spotify no tiene el permiso \'playlist-read-private\'. '
+        + 'Desvincula y vuelve a conectar Spotify para renovar los permisos.',
+      403,
+    );
   }
 
-  try {
-    const accessToken = await getValidSpotifyAccessToken(uid);
-    const data = await fetchPlaylistTracks({
-      accessToken,
-      playlistId,
-      limit,
-      offset,
-    });
+  const accessToken = await getValidSpotifyAccessToken(uid);
+  console.log('[getPlaylistTracks] uid:', uid, 'playlist:', playlistId);
+  const data = await getPlaylistTracks({ accessToken, playlistId, limit, offset });
 
-    return res.ok("Tracks de playlist obtenidos.", data);
-  } catch (error) {
-    if (error.code === "SPOTIFY_NOT_LINKED") {
-      return res.error("Spotify no esta vinculado.", 400);
-    }
-    if (error.code === "SPOTIFY_AUTH_EXPIRED") {
-      return res.error("Sesion de Spotify expirada. Vuelve a vincular la cuenta.", 401);
-    }
+  const tracks = (data.items || [])
+    .map((item) => item.item)
+    .filter(Boolean)
+    .map((track) => ({
+      id: track.id,
+      name: track.name,
+      artists: (track.artists || []).map((a) => ({ id: a.id, name: a.name })),
+      album: track.album ? { id: track.album.id, name: track.album.name } : null,
+      externalIds: track.external_ids || {},
+      durationMs: track.duration_ms || null,
+      uri: track.uri || null,
+    }));
 
-    if (error.response && error.response.status === 429) {
-      await addEvent(uid, "spotify_rate_limited", {endpoint: "getPlaylistTracks"});
-      return res.error("Spotify rate limit alcanzado. Intenta de nuevo.", 429);
-    }
+  return res.ok('Tracks obtenidos.', {
+    items: tracks,
+    total: data.total || 0,
+    next: data.next || null,
+    offset,
+    limit,
+  });
+}
 
-    return res.error("No se pudieron obtener tracks de Spotify.", 502);
-  }
-};
+module.exports = { getStatus, linkAccount, unlinkAccount, listPlaylists, listPlaylistTracks };

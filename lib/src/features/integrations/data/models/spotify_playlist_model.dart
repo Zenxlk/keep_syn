@@ -7,6 +7,7 @@ class SpotifyPlaylistModel extends Equatable {
   final String name;
   final String? imageUrl;
   final String? ownerName;
+  final String? ownerId;
   final int tracksTotal;
 
   const SpotifyPlaylistModel({
@@ -14,8 +15,13 @@ class SpotifyPlaylistModel extends Equatable {
     required this.name,
     this.imageUrl,
     this.ownerName,
+    this.ownerId,
     required this.tracksTotal,
   });
+
+  /// Playlists curadas por Spotify (Daily Mix, Discover Weekly, etc.)
+  /// devuelven 403 al acceder a sus tracks vía API.
+  bool get isSpotifyGenerated => ownerId == 'spotify';
 
   factory SpotifyPlaylistModel.fromJson(Map<String, dynamic> json) {
     final images = (json['images'] as List?)?.whereType<Map>().toList() ??
@@ -23,17 +29,28 @@ class SpotifyPlaylistModel extends Equatable {
     final owner = Map<String, dynamic>.from(
       (json['owner'] as Map?) ?? <String, dynamic>{},
     );
-    final tracks = Map<String, dynamic>.from(
-      (json['tracks'] as Map?) ?? <String, dynamic>{},
-    );
+
+    // Backend sends tracksTotal as a top-level field; fall back to nested
+    // tracks.total for raw Spotify API responses (e.g. tests / stubs).
+    final int tracksTotal;
+    if (json['tracksTotal'] is num) {
+      tracksTotal = (json['tracksTotal'] as num).toInt();
+    } else {
+      final tracks = Map<String, dynamic>.from(
+        (json['tracks'] as Map?) ?? <String, dynamic>{},
+      );
+      tracksTotal = tracks['total'] is num ? (tracks['total'] as num).toInt() : 0;
+    }
 
     return SpotifyPlaylistModel(
       id: json['id']?.toString() ?? 'unknown-playlist',
       name: json['name']?.toString() ?? 'Playlist sin nombre',
-      imageUrl: images.isNotEmpty ? images.first['url']?.toString() : null,
+      imageUrl: images.isNotEmpty
+          ? images.first['url']?.toString()
+          : json['imageUrl']?.toString(),
       ownerName: owner['display_name']?.toString(),
-      tracksTotal:
-          tracks['total'] is num ? (tracks['total'] as num).toInt() : 0,
+      ownerId: json['ownerId']?.toString() ?? owner['id']?.toString(),
+      tracksTotal: tracksTotal,
     );
   }
 
@@ -48,6 +65,6 @@ class SpotifyPlaylistModel extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, name, imageUrl, ownerName, tracksTotal];
+  List<Object?> get props => [id, name, imageUrl, ownerName, ownerId, tracksTotal];
 }
 

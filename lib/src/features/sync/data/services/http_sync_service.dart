@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:keepsyn_app/src/core/error/exceptions.dart';
 import 'package:keepsyn_app/src/features/sync/data/services/sync_service.dart';
 import 'package:keepsyn_app/src/features/sync/domain/entities/playlist.dart';
+import 'package:keepsyn_app/src/features/sync/domain/entities/review_item.dart';
 import 'package:keepsyn_app/src/features/sync/domain/entities/sync_job.dart';
 import 'package:keepsyn_app/src/features/sync/domain/entities/sync_progress.dart';
 import 'package:keepsyn_app/src/features/sync/domain/entities/sync_result.dart';
@@ -12,6 +13,29 @@ import 'package:keepsyn_app/src/features/sync/domain/entities/sync_result.dart';
 typedef IdTokenProvider = Future<String?> Function({bool forceRefresh});
 
 class HttpSyncService implements ISyncService {
+  @override
+  Future<SyncJobStatus?> getLastJobStatus() async => null;
+
+  @override
+  Future<SyncResult> reconnectToJob({
+    required String jobId,
+    required void Function(SyncProgress progress) onProgress,
+  }) async {
+    throw const ServerException('reconnectToJob no soportado en HttpSyncService.');
+  }
+
+  @override
+  Future<List<ReviewPendingItem>> getReviewItems({required String jobId}) async =>
+      const [];
+
+  @override
+  Future<void> submitReview({
+    required String jobId,
+    required List<ReviewDecision> decisions,
+  }) async {
+    throw const ServerException('submitReview no soportado en HttpSyncService.');
+  }
+
   final String baseUrl;
   final IdTokenProvider idTokenProvider;
   final http.Client _client;

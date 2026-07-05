@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:keepsyn_app/src/core/router/app_router.dart';
 import 'package:keepsyn_app/src/features/integrations/data/models/spotify_playlist_model.dart';
 import 'package:keepsyn_app/src/features/integrations/presentation/riverpod/spotify_integration_provider.dart';
@@ -17,12 +20,22 @@ class SpotifyPlaylistsScreen extends ConsumerStatefulWidget {
 
 class _SpotifyPlaylistsScreenState extends ConsumerState<SpotifyPlaylistsScreen> {
   final _searchController = TextEditingController();
+  Timer? _debounce;
   String _query = '';
+  String? _loadingPlaylistId;
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) setState(() => _query = value.trim());
+    });
   }
 
   @override
@@ -54,12 +67,32 @@ class _SpotifyPlaylistsScreenState extends ConsumerState<SpotifyPlaylistsScreen>
       body: Column(
         children: [
           if (syncState.isRunning || syncState.isPreparing)
-            LinearProgressIndicator(value: syncState.progress),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: LinearProgressIndicator(
+                value: syncState.isPreparing ? null : syncState.progress,
+              ),
+            ),
+          if (syncState.isRunning || syncState.isPreparing)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Card(
+                child: ListTile(
+                  leading: const Icon(Icons.sync_rounded),
+                  title: Text(
+                    syncState.progressMessage ?? 'Sincronizando playlist...',
+                  ),
+                  subtitle: Text(
+                    '${(syncState.progress * 100).toStringAsFixed(0)}% · ${syncState.activeJob?.sourcePlaylistId ?? ''}',
+                  ),
+                ),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: TextField(
               controller: _searchController,
-              onChanged: (value) => setState(() => _query = value.trim()),
+              onChanged: _onSearchChanged,
               decoration: InputDecoration(
                 hintText: 'Buscar playlist...',
                 prefixIcon: const Icon(Icons.search_rounded),
@@ -98,19 +131,32 @@ class _SpotifyPlaylistsScreenState extends ConsumerState<SpotifyPlaylistsScreen>
                     final playlist = filtered[index];
                     return _PlaylistCard(
                       playlist: playlist,
-                      isSyncing: !syncState.canStartNewSync,
+                      isSyncing: !syncState.canStartNewSync ||
+                          _loadingPlaylistId != null,
+                      isLoading: _loadingPlaylistId == playlist.id,
                       onSync: () => _startSync(context, ref, playlist),
                     );
                   },
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => const _PlaylistsShimmer(),
               error: (error, _) => Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text(
-                    error.toString(),
-                    textAlign: TextAlign.center,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        error.toString(),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Reintentar'),
+                        onPressed: () => ref.invalidate(spotifyPlaylistsProvider),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -140,10 +186,13 @@ class _SpotifyPlaylistsScreenState extends ConsumerState<SpotifyPlaylistsScreen>
     WidgetRef ref,
     SpotifyPlaylistModel playlist,
   ) async {
+    if (_loadingPlaylistId != null) return;
+    setState(() => _loadingPlaylistId = playlist.id);
+
     try {
-      final tracks = await ref.read(
-        spotifyPlaylistTracksProvider(playlist.id).future,
-      );
+      final tracks = await ref
+          .read(spotifyDataSourceProvider)
+          .getPlaylistTracks(playlist.id);
 
       final domainPlaylist = playlist.toDomain(tracks);
       final job = SyncJob(
@@ -155,32 +204,62 @@ class _SpotifyPlaylistsScreenState extends ConsumerState<SpotifyPlaylistsScreen>
         requestedAt: DateTime.now(),
       );
 
+      if (!context.mounted) return;
+      context.push(AppRoutes.sync);
+
       await ref.read(syncControllerProvider.notifier).startSync(
             job: job,
             sourcePlaylist: domainPlaylist,
           );
-
-      if (context.mounted) {
-        context.push(AppRoutes.sync);
-      }
     } catch (e) {
       if (context.mounted) {
+        final msg = _friendlyError(e.toString());
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo iniciar sync: $e')),
+          SnackBar(
+            content: Text(msg),
+            duration: const Duration(seconds: 8),
+          ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _loadingPlaylistId = null);
     }
+  }
+
+  String _friendlyError(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('generada por spotify') ||
+        lower.contains('daily mix') ||
+        lower.contains('on repeat') ||
+        lower.contains('privada de otro')) {
+      return 'Esta playlist no puede sincronizarse. '
+          'Spotify no permite acceder a sus tracks por API '
+          '(puede ser una playlist generada por Spotify o privada de otro usuario).';
+    }
+    if (raw.contains('403') ||
+        lower.contains('permisos') ||
+        lower.contains('permiso')) {
+      return 'Spotify no permite leer esta playlist. '
+          'Ve a Integraciones → Spotify, desvincula y vuelve a conectar.';
+    }
+    if (raw.contains('401') || lower.contains('expiró')) {
+      return 'Sesión de Spotify expirada. '
+          'Ve a Integraciones → Spotify, desvincula y vuelve a conectar.';
+    }
+    return 'No se pudieron cargar los tracks: $raw';
   }
 }
 
 class _PlaylistCard extends StatelessWidget {
   final SpotifyPlaylistModel playlist;
   final bool isSyncing;
-  final VoidCallback onSync;
+  final bool isLoading;
+  final VoidCallback? onSync;
 
   const _PlaylistCard({
     required this.playlist,
     required this.isSyncing,
+    required this.isLoading,
     required this.onSync,
   });
 
@@ -213,9 +292,76 @@ class _PlaylistCard extends StatelessWidget {
             const SizedBox(width: 12),
             FilledButton(
               onPressed: isSyncing ? null : onSync,
-              child: const Text('Sincronizar'),
+              child: isLoading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Sincronizar'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PlaylistsShimmer extends StatelessWidget {
+  const _PlaylistsShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    final base = Theme.of(context).colorScheme.surfaceContainerHighest;
+    final highlight = Theme.of(context).colorScheme.surface;
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: 6,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (_, _) => Shimmer.fromColors(
+        baseColor: base,
+        highlightColor: highlight,
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(width: 64, height: 64, color: Colors.white),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        height: 14,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        height: 11,
+                        width: 120,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

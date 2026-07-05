@@ -1,12 +1,10 @@
-const express = require("express");
-const youtubeController = require("./youtubeController");
+const express = require('express');
+const { getStatus, linkAccount, unlinkAccount } = require('./youtubeController');
 
 const router = express.Router();
 
-router.post("/link", youtubeController.linkAccount);
-router.post("/refresh", youtubeController.refreshAccount);
-router.post("/unlink", youtubeController.unlinkAccount);
-router.get("/status", youtubeController.getStatus);
+router.get('/status', getStatus);
+router.post('/link', linkAccount);
+router.post('/unlink', unlinkAccount);
 
 module.exports = router;
-

@@ -14,6 +14,7 @@ import 'package:keepsyn_app/src/features/auth/data/repositories/auth_repository_
 import 'package:keepsyn_app/src/features/auth/domain/entities/user.dart' as app;
 import 'package:keepsyn_app/src/features/auth/domain/repositories/auth_repository.dart';
 import 'package:keepsyn_app/src/features/auth/presentation/riverpod/auth_controller_state.dart';
+import 'package:keepsyn_app/src/features/notifications/notification_service.dart';
 
 part 'auth_providers.g.dart';
 
@@ -64,7 +65,12 @@ class AuthController extends _$AuthController {
           (user) {
         if (user != null) {
           state = AuthControllerState.authenticated(user);
+          NotificationService.instance.initialize(uid: user.uid);
         } else {
+          final previousUid = state.user?.uid;
+          if (previousUid != null) {
+            NotificationService.instance.dispose(uid: previousUid);
+          }
           state = state.copyWith(
             status: AuthSessionStatus.unauthenticated,
             user: null,
@@ -125,6 +131,10 @@ class AuthController extends _$AuthController {
   }
 
   Future<void> signOut() async {
+    final uid = state.user?.uid;
+    if (uid != null) {
+      await NotificationService.instance.dispose(uid: uid);
+    }
     await ref.read(authRepositoryProvider).signOut();
 
     state = state.copyWith(

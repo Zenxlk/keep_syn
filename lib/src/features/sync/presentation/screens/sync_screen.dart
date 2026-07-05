@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:keepsyn_app/src/core/router/app_router.dart';
 import 'package:keepsyn_app/src/features/sync/presentation/riverpod/sync_controller_state.dart';
 import 'package:keepsyn_app/src/features/sync/presentation/riverpod/sync_providers.dart';
 
@@ -29,15 +31,29 @@ class SyncScreen extends ConsumerWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 12),
-                  LinearProgressIndicator(value: state.progress),
+                  if ((state.isRunning || state.isPreparing) && !state.hasKnownTotal)
+                    const LinearProgressIndicator()
+                  else
+                    LinearProgressIndicator(value: state.progress),
                   const SizedBox(height: 8),
-                  Text('${(state.progress * 100).toStringAsFixed(0)}%'),
+                  if (state.hasKnownTotal)
+                    Text(
+                      '${state.processedTracks} de ${state.totalTracks} canciones',
+                    ),
+                  const SizedBox(height: 8),
+                  Text(
+                    state.progressMessage ??
+                        (state.isRunning || state.isPreparing
+                            ? 'Esperando actualizacion del backend...'
+                            : 'Sincronizacion inactiva.'),
+                  ),
                   if (state.activeJob != null) ...[
                     const SizedBox(height: 8),
                     Text('Job: ${state.activeJob!.jobId}'),
                     Text(
                       'Origen: ${state.activeJob!.sourcePlatform} · Destino: ${state.activeJob!.targetPlatform}',
                     ),
+                    Text('Playlist origen: ${state.activeJob!.sourcePlaylistId}'),
                   ],
                 ],
               ),
@@ -60,10 +76,42 @@ class SyncScreen extends ConsumerWidget {
                     Text('Creados: ${state.result!.created}'),
                     Text('Omitidos: ${state.result!.skipped}'),
                     Text('Fallidos: ${state.result!.failed}'),
+                    if (state.result!.reviewPendingCount > 0)
+                      Text(
+                        'En revisión: ${state.result!.reviewPendingCount}',
+                        style: const TextStyle(color: Colors.orange),
+                      ),
                   ],
                 ),
               ),
             ),
+            if (state.result!.errors.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Card(
+                child: ExpansionTile(
+                  leading: Icon(
+                    Icons.warning_amber_rounded,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text('Tracks fallidos (${state.result!.errors.length})'),
+                  children: state.result!.errors.map((error) {
+                    return ListTile(
+                      dense: true,
+                      title: Text(
+                        error.message,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      subtitle: Text(
+                        '${error.code} · ${error.trackId}',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
           ],
           if (state.hasError) ...[
             const SizedBox(height: 12),
@@ -87,11 +135,36 @@ class SyncScreen extends ConsumerWidget {
               icon: const Icon(Icons.stop_circle_outlined),
               label: const Text('Cancelar sincronizacion'),
             ),
-          if (state.isFinished || state.isIdle)
+          if ((state.isFinished || (state.isIdle && state.result != null)) &&
+              (state.result?.reviewPendingCount ?? 0) > 0) ...[
             OutlinedButton.icon(
-              onPressed: () => notifier.reset(),
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Limpiar estado'),
+              onPressed: () => context.push(
+                '${AppRoutes.review}?jobId=${state.result!.jobId}',
+              ),
+              icon: const Icon(Icons.rate_review_outlined),
+              label: Text(
+                'Revisar ${state.result!.reviewPendingCount} track(s)',
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (state.isFinished || (state.isIdle && state.result != null))
+            FilledButton.icon(
+              onPressed: () {
+                notifier.reset();
+                if (context.canPop()) context.pop();
+              },
+              icon: const Icon(Icons.check_rounded),
+              label: const Text('Listo — sincronizar otra'),
+            ),
+          if (state.hasError)
+            OutlinedButton.icon(
+              onPressed: () {
+                notifier.reset();
+                if (context.canPop()) context.pop();
+              },
+              icon: const Icon(Icons.arrow_back_rounded),
+              label: const Text('Volver'),
             ),
         ],
       ),
